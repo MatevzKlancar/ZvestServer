@@ -1,0 +1,16 @@
+{
+  "name": "zvest",
+  "scripts": {
+    "dev": "bun run --env-file=.env --hot src/index.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5",
+    "hono": "^4.6.3",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/qrcode": "^1.5.5"
+  }
+}
