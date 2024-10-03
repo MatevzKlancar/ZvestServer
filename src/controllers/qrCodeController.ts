@@ -13,7 +13,25 @@ export const getQRCode = async (c: Context) => {
 
   const userId = session.user.id;
 
-  // Check for existing active QR code
+  // Check user role
+  const { data: userData, error: userError } = await supabase
+    .from('all_users')
+    .select('role')
+    .eq('user_id', userId)
+    .single();
+
+  if (userError) {
+    return c.json({ error: 'Error fetching user data' }, 500);
+  }
+
+  if (userData.role !== 'Client') {
+    return c.json(
+      { error: 'Access denied. Only clients can access QR codes.' },
+      403
+    );
+  }
+
+  // Rest of the existing code for QR code fetching/generation
   const { data: existingQRCode, error: fetchError } = await supabase
     .from('qr_codes')
     .select('*')
