@@ -13,32 +13,37 @@ export const awardLoyaltyPoints = async (c: Context) => {
 
   const staffUserId = session.user.id;
 
-  // Check if the user is a staff member
+  // Check if the user is a staff member and get business info
   const { data: staffData, error: staffError } = await supabase
     .from('all_users')
-    .select('role, business_id')
+    .select('user_id, business_id, role')
     .eq('user_id', staffUserId)
     .single();
 
   if (staffError || staffData.role !== 'Staff') {
     return c.json(
-      { error: 'Access denied. Only staff members can award points.' },
+      { error: 'Access denied. Only staff members can award points/coupons.' },
       403
     );
   }
 
-  // Get the QR code data and points from the request body
-  const { qrCodeData, points } = await c.req.json();
+  // Get the QR code data and amount from the request body
+  const { qrCodeData, amount } = await c.req.json();
 
-  if (!qrCodeData || !points || isNaN(points) || points <= 0) {
+  if (!qrCodeData || !amount || isNaN(amount) || amount <= 0) {
     return c.json(
-      { error: 'Invalid input. Please provide valid QR code data and points.' },
+      { error: 'Invalid input. Please provide valid QR code data and amount.' },
       400
     );
   }
 
-  // Decode the QR code data to get the user ID
-  const [userId, timestamp] = qrCodeData.split('-');
+  // Decode the QR code data to get the user ID and timestamp
+  const lastHyphenIndex = qrCodeData.lastIndexOf('-');
+  const userId = qrCodeData.substring(0, lastHyphenIndex);
+  const timestamp = qrCodeData.substring(lastHyphenIndex + 1);
+
+  console.log('Extracted userId:', userId);
+  console.log('Extracted timestamp:', timestamp);
 
   // Verify if the QR code is valid and not expired
   const { data: qrCode, error: qrError } = await supabase
@@ -50,33 +55,77 @@ export const awardLoyaltyPoints = async (c: Context) => {
     .limit(1)
     .single();
 
-  if (qrError || !qrCode) {
-    return c.json({ error: 'Invalid or expired QR code.' }, 400);
+  if (qrError) {
+    console.error('QR code fetch error:', qrError);
+    if (qrError.code === 'PGRST116') {
+      return c.json(
+        { error: 'Invalid or expired QR code. No matching QR code found.' },
+        400
+      );
+    }
+    return c.json({ error: 'Error fetching QR code data' }, 500);
   }
 
-  // Award points to the user
-  const { data: loyaltyData, error: loyaltyError } = await supabase
-    .from('loyalty_points')
-    .insert({
-      id: randomUUID(),
-      user_id: userId,
-      business_id: staffData.business_id,
-      points: points,
-      awarded_by: staffUserId,
-      awarded_at: new Date().toISOString(),
-    })
-    .select()
+  if (!qrCode) {
+    return c.json(
+      { error: 'Invalid or expired QR code. QR code not found.' },
+      400
+    );
+  }
+
+  console.log('Found QR code:', qrCode);
+
+  // Get the business loyalty type
+  const { data: businessData, error: businessError } = await supabase
+    .from('businesses')
+    .select('loyalty_type')
+    .eq('id', staffData.business_id)
     .single();
 
-  if (loyaltyError) {
-    return c.json({ error: 'Error awarding loyalty points' }, 500);
+  if (businessError) {
+    return c.json({ error: 'Error fetching business data' }, 500);
   }
 
-  return c.json({
-    message: 'Loyalty points awarded successfully',
-    awardedPoints: loyaltyData.points,
-    totalPoints: loyaltyData.points, // You might want to calculate the total points for the user here
-  });
+  let result;
+  if (businessData.loyalty_type === 'POINTS') {
+    // Award points
+    const { data, error } = await supabase
+      .from('loyalty_points')
+      .insert({
+        id: randomUUID(),
+        user_id: userId,
+        business_id: staffData.business_id,
+        points: amount,
+        awarded_by: staffData.user_id,
+        awarded_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return c.json({ error: 'Error awarding loyalty points' }, 500);
+    }
+    result = {
+      message: 'Loyalty points awarded successfully',
+      awarded: data.points,
+    };
+  } else if (businessData.loyalty_type === 'COUPONS') {
+    // Award coupons
+    const { data, error } = await supabase.rpc('increment_coupons', {
+      p_user_id: userId,
+      p_business_id: staffData.business_id,
+      p_coupon_count: amount,
+    });
+
+    if (error) {
+      return c.json({ error: 'Error awarding coupons' }, 500);
+    }
+    result = { message: 'Coupons awarded successfully', awarded: amount };
+  } else {
+    return c.json({ error: 'Invalid loyalty type for the business' }, 400);
+  }
+
+  return c.json(result);
 };
 
 // You can add more loyalty-related functions here in the future

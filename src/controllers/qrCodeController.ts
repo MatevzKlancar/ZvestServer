@@ -51,7 +51,7 @@ export const getQRCode = async (c: Context) => {
     qrCode = existingQRCode;
   } else {
     const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + 5 * 60 * 1000); // 5 minutes from now
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000); // 10 minutes from now
 
     const uniqueIdentifier = `${userId}-${createdAt.getTime()}`;
     const qrCodeData = await generateQRCode(uniqueIdentifier);
