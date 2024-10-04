@@ -70,8 +70,11 @@ export const confirmSignUp = async (c: Context) => {
     }
 
     const supabaseUrl = process.env.SUPABASE_URL;
-    if (!supabaseUrl) {
-      console.error('SUPABASE_URL is not set in the environment variables');
+    const frontendUrl = process.env.FRONTEND_URL; // Add this to your environment variables
+    if (!supabaseUrl || !frontendUrl) {
+      console.error(
+        'SUPABASE_URL or FRONTEND_URL is not set in the environment variables'
+      );
       return c.text('Server configuration error', 500);
     }
 
@@ -102,11 +105,11 @@ export const confirmSignUp = async (c: Context) => {
       }
     }
 
-    // Return the session data to the client
-    return c.json({
-      message: 'Account confirmed and logged in successfully',
-      session: data.session,
-    });
+    // Generate a login URL with the session token
+    const loginUrl = `${frontendUrl}/login?session=${encodeURIComponent(JSON.stringify(data.session))}`;
+
+    // Redirect to the frontend login page with the session data
+    return c.redirect(loginUrl);
   } catch (error) {
     console.error('Error during confirmation:', error);
     return c.text(
