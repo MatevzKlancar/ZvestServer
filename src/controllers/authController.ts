@@ -25,17 +25,39 @@ export const signUp = async (c: Context) => {
 };
 
 export const login = async (c: Context) => {
-  const { email, password } = await c.req.json();
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  try {
+    const body = await c.req.json();
+    let data, error;
 
-  if (error) {
-    return c.json({ error: error.message }, 400);
+    if ('access_token' in body) {
+      // Login with access token
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+      if (sessionError) {
+        return c.json({ error: sessionError.message }, 401);
+      }
+      data = sessionData;
+      error = null;
+    } else if ('email' in body && 'password' in body) {
+      // Login with email and password
+      const { email, password } = body;
+      ({ data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      }));
+    } else {
+      return c.json({ error: 'Invalid login credentials' }, 400);
+    }
+
+    if (error) {
+      return c.json({ error: error.message }, 400);
+    }
+
+    return c.json({ session: data.session });
+  } catch (error) {
+    console.error('Unexpected error in login function:', error);
+    return c.json({ error: 'An unexpected error occurred' }, 500);
   }
-
-  return c.json({ session: data.session });
 };
 
 export const confirmSignUp = async (c: Context) => {
@@ -55,7 +77,7 @@ export const confirmSignUp = async (c: Context) => {
 
     const { data, error } = await supabase.auth.verifyOtp({
       token_hash: token,
-      type: 'signup'
+      type: 'signup',
     });
 
     if (error) {
@@ -71,7 +93,10 @@ export const confirmSignUp = async (c: Context) => {
       });
 
       if (insertError) {
-        console.error('Error inserting user data into users table:', insertError);
+        console.error(
+          'Error inserting user data into users table:',
+          insertError
+        );
       } else {
         console.log('User data inserted successfully into users table');
       }
@@ -80,10 +105,13 @@ export const confirmSignUp = async (c: Context) => {
     // Return the session data to the client
     return c.json({
       message: 'Account confirmed and logged in successfully',
-      session: data.session
+      session: data.session,
     });
   } catch (error) {
     console.error('Error during confirmation:', error);
-    return c.text('An error occurred during confirmation. Please try again.', 500);
+    return c.text(
+      'An error occurred during confirmation. Please try again.',
+      500
+    );
   }
 };
