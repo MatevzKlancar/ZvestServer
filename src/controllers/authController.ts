@@ -53,7 +53,26 @@ export const login = async (c: Context) => {
       return c.json({ error: error.message }, 400);
     }
 
-    return c.json({ session: data.session });
+    if (!data.session || !data.session.user) {
+      return c.json({ error: 'No session or user data found' }, 400);
+    }
+
+    // Fetch user role from all_users table
+    const { data: userData, error: userError } = await supabase
+      .from('all_users')
+      .select('role')
+      .eq('user_id', data.session.user.id)
+      .single();
+
+    if (userError) {
+      console.error('Error fetching user role:', userError);
+      return c.json({ error: 'Error fetching user role' }, 500);
+    }
+
+    return c.json({
+      session: data.session,
+      role: userData.role,
+    });
   } catch (error) {
     console.error('Unexpected error in login function:', error);
     return c.json({ error: 'An unexpected error occurred' }, 500);
