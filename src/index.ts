@@ -19,6 +19,7 @@ app.get('/auth/signup-success', (c) =>
   c.text('Your account has been successfully confirmed!')
 );
 app.route('/api/loyalty', loyaltyRouter);
+
 // Error handling
 app.onError(errorHandler);
 

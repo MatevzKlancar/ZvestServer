@@ -128,4 +128,67 @@ export const awardLoyaltyPoints = async (c: Context) => {
   return c.json(result);
 };
 
-// You can add more loyalty-related functions here in the future
+export const getLoyaltyPointsInfo = async (c: Context) => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const staffUserId = session.user.id;
+
+  // Check if the user is a staff member or owner and get business info
+  const { data: staffData, error: staffError } = await supabase
+    .from('all_users')
+    .select('user_id, business_id, role')
+    .eq('user_id', staffUserId)
+    .single();
+
+  if (
+    staffError ||
+    (staffData.role !== 'Staff' && staffData.role !== 'Owner')
+  ) {
+    return c.json(
+      {
+        error:
+          'Access denied. Only staff members or owners can view loyalty points information.',
+      },
+      403
+    );
+  }
+
+  // Get loyalty points information for the business
+  const { data: loyaltyPointsData, error: loyaltyPointsError } = await supabase
+    .from('loyalty_points')
+    .select(
+      `
+      id,
+      user_id,
+      points,
+      awarded_by,
+      awarded_at,
+      customer:all_users!loyalty_points_user_id_fkey (
+        email,
+        role
+      ),
+      staff:all_users!loyalty_points_awarded_by_fkey (
+        email,
+        role
+      )
+    `
+    )
+    .eq('business_id', staffData.business_id)
+    .order('awarded_at', { ascending: false });
+
+  if (loyaltyPointsError) {
+    console.error('Error fetching loyalty points data:', loyaltyPointsError);
+    return c.json({ error: 'Error fetching loyalty points data' }, 500);
+  }
+
+  return c.json({
+    message: 'Loyalty points information retrieved successfully',
+    data: loyaltyPointsData,
+  });
+};
