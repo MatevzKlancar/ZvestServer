@@ -1,5 +1,11 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
+import { Session } from '@supabase/supabase-js';
+
+// Extend the Session type to include user_role
+interface ExtendedSession extends Session {
+  user_role?: string;
+}
 
 export const signUp = async (c: Context) => {
   try {
@@ -69,9 +75,14 @@ export const login = async (c: Context) => {
       return c.json({ error: 'Error fetching user role' }, 500);
     }
 
+    // Create an extended session object
+    const extendedSession: ExtendedSession = {
+      ...data.session,
+      user_role: userData.role,
+    };
+
     return c.json({
-      session: data.session,
-      role: userData.role,
+      session: extendedSession,
     });
   } catch (error) {
     console.error('Unexpected error in login function:', error);
