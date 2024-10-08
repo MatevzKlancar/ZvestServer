@@ -9,23 +9,18 @@ interface ExtendedSession extends Session {
 
 export const signUp = async (c: Context) => {
   try {
-    console.log('Starting sign-up process');
     const { email, password } = await c.req.json();
-    console.log(`Attempting to sign up user with email: ${email}`);
 
     const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
-      console.error('Supabase auth.signUp error:', error);
       return c.json({ error: error.message }, 400);
     }
 
-    console.log('User signed up successfully in auth. User ID:', data.user?.id);
     return c.json({
       message: 'Please check your email to confirm your account.',
     });
   } catch (error) {
-    console.error('Unexpected error in signUp function:', error);
     return c.json({ error: 'An unexpected error occurred' }, 500);
   }
 };
@@ -71,7 +66,6 @@ export const login = async (c: Context) => {
       .single();
 
     if (userError) {
-      console.error('Error fetching user role:', userError);
       return c.json({ error: 'Error fetching user role' }, 500);
     }
 
@@ -85,7 +79,6 @@ export const login = async (c: Context) => {
       session: extendedSession,
     });
   } catch (error) {
-    console.error('Unexpected error in login function:', error);
     return c.json({ error: 'An unexpected error occurred' }, 500);
   }
 };
@@ -114,7 +107,6 @@ export const confirmSignUp = async (c: Context) => {
     });
 
     if (error) {
-      console.error('Error verifying OTP:', error);
       return c.json({ error: 'Invalid or expired token' }, 400);
     }
 

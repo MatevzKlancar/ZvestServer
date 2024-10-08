@@ -6,9 +6,7 @@ const SUPABASE_URL =
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 
 export async function authMiddleware(c: Context, next: Next) {
-  console.log('Auth middleware called');
   const authHeader = c.req.header('Authorization');
-  console.log('Auth header:', authHeader);
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     console.log('Missing or invalid Authorization header');
@@ -16,7 +14,6 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 
   const token = authHeader.split(' ')[1];
-  console.log('Token:', token);
 
   try {
     const { payload } = await jwtVerify(
@@ -26,9 +23,6 @@ export async function authMiddleware(c: Context, next: Next) {
         issuer: `${SUPABASE_URL}/auth/v1`,
       }
     );
-
-    console.log('Token verified successfully');
-    console.log('Payload:', payload);
 
     c.set('user', payload);
     await next();
