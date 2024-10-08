@@ -3,15 +3,13 @@ import { supabase } from '../config/supabase';
 import { randomUUID } from 'crypto';
 
 export const awardLoyaltyPoints = async (c: Context) => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const user = c.get('user');
 
-  if (!session) {
+  if (!user || !user.sub) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const staffUserId = session.user.id;
+  const staffUserId = user.sub;
 
   // Check if the user is a staff member and get business info
   const { data: staffData, error: staffError } = await supabase

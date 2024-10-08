@@ -3,15 +3,13 @@ import { supabase } from '../config/supabase';
 import { generateQRCode } from '../utils/qrCodeGenerator';
 
 export const getQRCode = async (c: Context) => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const user = c.get('user');
 
-  if (!session) {
+  if (!user || !user.sub) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const userId = session.user.id;
+  const userId = user.sub;
 
   // Check user role
   const { data: userData, error: userError } = await supabase
