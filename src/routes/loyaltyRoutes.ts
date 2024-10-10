@@ -13,4 +13,7 @@ loyaltyRouter.post('/coupons', couponController.createCoupon);
 loyaltyRouter.post('/coupons/redeem', couponController.redeemCoupon);
 loyaltyRouter.post('/coupons/verify', couponController.verifyCoupon);
 
+loyaltyRouter.get('/coupons/owner', couponController.getOwnerCoupons);
+loyaltyRouter.delete('/coupons/owner/:couponId', couponController.deleteCoupon);
+
 export default loyaltyRouter;

@@ -236,3 +236,107 @@ export const verifyCoupon = async (c: Context) => {
     coupon: redeemedCoupon.coupons,
   });
 };
+
+export const getOwnerCoupons = async (c: Context) => {
+  const user = c.get('user');
+
+  if (!user || !user.sub) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const ownerId = user.sub;
+
+  // Check if the user is an owner and get business info
+  const { data: ownerData, error: ownerError } = await supabase
+    .from('all_users')
+    .select('user_id, business_id, role')
+    .eq('user_id', ownerId)
+    .single();
+
+  if (ownerError || ownerData.role !== 'Owner') {
+    return c.json(
+      { error: 'Access denied. Only owners can view their coupons.' },
+      403
+    );
+  }
+
+  // Fetch all coupons for the owner's business
+  const { data: coupons, error: couponsError } = await supabase
+    .from('coupons')
+    .select('*')
+    .eq('business_id', ownerData.business_id);
+
+  if (couponsError) {
+    console.error('Error fetching coupons:', couponsError);
+    return c.json({ error: 'Error fetching coupons' }, 500);
+  }
+
+  return c.json({
+    message: 'Coupons fetched successfully',
+    coupons,
+  });
+};
+
+export const deleteCoupon = async (c: Context) => {
+  const user = c.get('user');
+
+  if (!user || !user.sub) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const ownerId = user.sub;
+
+  // Check if the user is an owner and get business info
+  const { data: ownerData, error: ownerError } = await supabase
+    .from('all_users')
+    .select('user_id, business_id, role')
+    .eq('user_id', ownerId)
+    .single();
+
+  if (ownerError || ownerData.role !== 'Owner') {
+    return c.json(
+      { error: 'Access denied. Only owners can delete coupons.' },
+      403
+    );
+  }
+
+  const { couponId } = await c.req.json();
+
+  if (!couponId) {
+    return c.json(
+      { error: 'Invalid input. Please provide a valid coupon ID.' },
+      400
+    );
+  }
+
+  // Check if the coupon belongs to the owner's business
+  const { data: coupon, error: couponError } = await supabase
+    .from('coupons')
+    .select('*')
+    .eq('id', couponId)
+    .eq('business_id', ownerData.business_id)
+    .single();
+
+  if (couponError || !coupon) {
+    return c.json(
+      { error: 'Coupon not found or not owned by this business' },
+      404
+    );
+  }
+
+  // Delete the coupon
+  const { error: deleteError } = await supabase
+    .from('coupons')
+    .delete()
+    .eq('id', couponId);
+
+  if (deleteError) {
+    console.error('Error deleting coupon:', deleteError);
+    return c.json({ error: 'Error deleting coupon' }, 500);
+  }
+
+  return c.json({
+    message: 'Coupon deleted successfully',
+    deletedCouponId: couponId,
+  });
+};
