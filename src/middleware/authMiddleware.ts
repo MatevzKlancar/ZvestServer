@@ -1,8 +1,7 @@
 import { Context, Next } from 'hono';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || 'https://wjmldejbfyyuilqsemsr.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 
 export async function authMiddleware(c: Context, next: Next) {
