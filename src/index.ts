@@ -8,7 +8,7 @@ import authRouter from './routes/authRoutes';
 import { errorHandler } from './utils/errorHandler';
 import qrCodeRouter from './routes/qrCodeRoutes';
 import loyaltyRouter from './routes/loyaltyRoutes';
-import { authMiddleware } from './middleware/authMiddleware';
+import staffRouter from './routes/staffRoutes';
 
 const app = new Hono();
 
@@ -35,6 +35,7 @@ app.get('/auth/signup-success', (c) =>
   c.text('Your account has been successfully confirmed!')
 );
 app.route('/api/loyalty', loyaltyRouter);
+app.route('/api/staff', staffRouter);
 
 // Error handling
 app.onError(errorHandler);

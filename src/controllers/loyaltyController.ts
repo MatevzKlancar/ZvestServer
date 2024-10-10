@@ -107,6 +107,17 @@ export const awardLoyaltyPoints = async (c: Context) => {
       message: 'Loyalty points awarded successfully',
       awarded: data.points,
     };
+
+    // Log the staff action
+    await supabase.from('staff_actions').insert({
+      staff_user_id: staffUserId,
+      action_type: 'AWARD_POINTS',
+      action_details: {
+        points_awarded: amount,
+        recipient_user_id: userId,
+      },
+      business_id: staffData.business_id,
+    });
   } else if (businessData.loyalty_type === 'COUPONS') {
     // Award coupons
     const { data, error } = await supabase.rpc('increment_coupons', {

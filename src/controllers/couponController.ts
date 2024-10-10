@@ -227,6 +227,17 @@ export const verifyCoupon = async (c: Context) => {
     );
   }
 
+  // Log the staff action
+  await supabase.from('staff_actions').insert({
+    staff_user_id: staffUserId,
+    action_type: 'VERIFY_COUPON',
+    action_details: {
+      coupon_id: redeemedCoupon.id,
+      coupon_name: redeemedCoupon.coupons.name,
+    },
+    business_id: staffData.business_id,
+  });
+
   return c.json({
     message: 'Coupon verified successfully',
     coupon: redeemedCoupon.coupons,

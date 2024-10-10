@@ -1,5 +1,5 @@
 import { Context, Next } from 'hono';
-import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { jwtVerify } from 'jose';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
