@@ -101,6 +101,7 @@ export const redeemCoupon = async (c: Context) => {
     .single();
 
   if (loyaltyError) {
+    console.error('Error fetching loyalty points:', loyaltyError);
     return c.json({ error: 'Error fetching loyalty points' }, 500);
   }
 
@@ -109,6 +110,7 @@ export const redeemCoupon = async (c: Context) => {
   }
 
   // Deduct points and create a redeemed coupon entry
+  console.log('Attempting to redeem coupon...');
   const { data: redeemedCoupon, error: redeemError } = await supabase.rpc(
     'redeem_coupon',
     {
@@ -119,8 +121,14 @@ export const redeemCoupon = async (c: Context) => {
   );
 
   if (redeemError) {
-    return c.json({ error: 'Error redeeming coupon' }, 500);
+    console.error('Error redeeming coupon:', redeemError);
+    return c.json(
+      { error: 'Error redeeming coupon', details: redeemError },
+      500
+    );
   }
+
+  console.log('Coupon redeemed successfully:', redeemedCoupon);
 
   // Generate QR code for the redeemed coupon
   const qrCodeData = `${redeemedCoupon.id}-${Date.now()}`;
@@ -130,6 +138,7 @@ export const redeemCoupon = async (c: Context) => {
     message: 'Coupon redeemed successfully',
     redeemedCoupon,
     qrCode: qrCodeImage,
+    qrCodeData, // Include this for testing purposes
   });
 };
 
@@ -165,7 +174,21 @@ export const verifyCoupon = async (c: Context) => {
     );
   }
 
-  const [redeemedCouponId, timestamp] = qrCodeData.split('-');
+  // Parse the QR code data
+  const parts = qrCodeData.split('-');
+  if (parts.length !== 6) {
+    return c.json({ error: 'Invalid QR code format' }, 400);
+  }
+
+  const redeemedCouponId = parts.slice(0, 5).join('-'); // Reconstruct the UUID
+  const timestamp = parts[5];
+
+  // Validate UUID format
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(redeemedCouponId)) {
+    return c.json({ error: 'Invalid coupon ID format' }, 400);
+  }
 
   // Verify the redeemed coupon
   const { data: redeemedCoupon, error: verifyError } = await supabase
@@ -175,8 +198,19 @@ export const verifyCoupon = async (c: Context) => {
     .eq('business_id', staffData.business_id)
     .single();
 
-  if (verifyError || !redeemedCoupon) {
-    return c.json({ error: 'Invalid or expired coupon' }, 400);
+  if (verifyError) {
+    console.error('Error verifying coupon:', verifyError);
+    return c.json(
+      { error: 'Error verifying coupon', details: verifyError },
+      500
+    );
+  }
+
+  if (!redeemedCoupon) {
+    return c.json(
+      { error: 'Coupon not found or not associated with this business' },
+      404
+    );
   }
 
   if (redeemedCoupon.used) {
@@ -190,7 +224,11 @@ export const verifyCoupon = async (c: Context) => {
     .eq('id', redeemedCouponId);
 
   if (updateError) {
-    return c.json({ error: 'Error updating coupon status' }, 500);
+    console.error('Error updating coupon status:', updateError);
+    return c.json(
+      { error: 'Error updating coupon status', details: updateError },
+      500
+    );
   }
 
   return c.json({
