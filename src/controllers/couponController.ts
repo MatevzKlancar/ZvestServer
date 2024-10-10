@@ -279,6 +279,7 @@ export const getOwnerCoupons = async (c: Context) => {
 
 export const deleteCoupon = async (c: Context) => {
   const user = c.get('user');
+  const couponId = c.req.param('couponId');
 
   if (!user || !user.sub) {
     return c.json({ error: 'Not authenticated' }, 401);
@@ -295,12 +296,10 @@ export const deleteCoupon = async (c: Context) => {
 
   if (ownerError || ownerData.role !== 'Owner') {
     return c.json(
-      { error: 'Access denied. Only owners can delete coupons.' },
+      { error: 'Access denied. Only owners can deactivate coupons.' },
       403
     );
   }
-
-  const { couponId } = await c.req.json();
 
   if (!couponId) {
     return c.json(
@@ -324,19 +323,19 @@ export const deleteCoupon = async (c: Context) => {
     );
   }
 
-  // Delete the coupon
-  const { error: deleteError } = await supabase
+  // Update the coupon to mark it as inactive
+  const { error: updateError } = await supabase
     .from('coupons')
-    .delete()
+    .update({ is_active: false })
     .eq('id', couponId);
 
-  if (deleteError) {
-    console.error('Error deleting coupon:', deleteError);
-    return c.json({ error: 'Error deleting coupon' }, 500);
+  if (updateError) {
+    console.error('Error deactivating coupon:', updateError);
+    return c.json({ error: 'Error deactivating coupon' }, 500);
   }
 
   return c.json({
-    message: 'Coupon deleted successfully',
-    deletedCouponId: couponId,
+    message: 'Coupon deactivated successfully',
+    deactivatedCouponId: couponId,
   });
 };
