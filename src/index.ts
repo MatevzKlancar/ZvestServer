@@ -1,3 +1,6 @@
+import { config } from 'dotenv';
+config();
+
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { signUp, confirmSignUp } from './controllers/authController';
@@ -13,7 +16,7 @@ const app = new Hono();
 app.use(
   '*',
   cors({
-    origin: ['http://localhost:5173', 'https://*.vercel.app'],
+    origin: ['http://localhost:5173'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['Content-Length'],
@@ -23,7 +26,6 @@ app.use(
 );
 
 // Routes
-app.get('/', (c) => c.text('Hello from Hono!'));
 app.route('/auth', authRouter);
 app.route('/qr-code', qrCodeRouter);
 app.route('/loyalty', loyaltyRouter);
@@ -38,4 +40,11 @@ app.route('/api/staff', staffRouter);
 // Error handling
 app.onError(errorHandler);
 
-export default app;
+// Start the server
+const port = process.env.PORT || 3000;
+console.log(`Server is running on http://localhost:${port}`);
+
+export default {
+  port,
+  fetch: app.fetch,
+};
