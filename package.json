@@ -1,7 +1,9 @@
 {
   "name": "zvest",
   "scripts": {
-    "dev": "bun run --env-file=.env --hot src/index.ts"
+    "dev": "bun run --env-file=.env --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build ./src/index.ts --outdir ./dist"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -12,7 +14,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^22.7.5",
     "@types/qrcode": "^1.5.5",
+    "@vercel/node": "^3.2.23",
     "prettier": "^3.3.3"
   }
 }

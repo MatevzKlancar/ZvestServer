@@ -26,6 +26,9 @@ app.use(
 );
 
 // Routes
+// Test route
+app.get('/test', (c) => c.text('Hello from Hono!'));
+
 app.route('/auth', authRouter);
 app.route('/qr-code', qrCodeRouter);
 app.route('/loyalty', loyaltyRouter);
@@ -44,7 +47,4 @@ app.onError(errorHandler);
 const port = process.env.PORT || 3000;
 console.log(`Server is running on http://localhost:${port}`);
 
-export default {
-  port,
-  fetch: app.fetch,
-};
+export default app;
