@@ -1,6 +1,8 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
 import { generateQRCode } from '../utils/qrCodeGenerator';
+import { awardLoyaltyPoints } from './loyaltyController';
+import { verifyCoupon } from './couponController';
 
 export const getQRCode = async (c: Context) => {
   const user = c.get('user');
@@ -83,4 +85,64 @@ export const getQRCode = async (c: Context) => {
       expiresAt: qrCode.expires_at,
     },
   });
+};
+
+export const handleQRCode = async (c: Context) => {
+  const user = c.get('user');
+
+  if (!user || !user.sub) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const staffUserId = user.sub;
+
+  // Check if the user is a staff member
+  const { data: staffData, error: staffError } = await supabase
+    .from('all_users')
+    .select('user_id, business_id, role')
+    .eq('user_id', staffUserId)
+    .single();
+
+  if (staffError || staffData.role !== 'Staff') {
+    return c.json(
+      { error: 'Access denied. Only staff members can scan QR codes.' },
+      403
+    );
+  }
+
+  const { qrCodeData, amount } = await c.req.json();
+
+  console.log('Received QR Code Data:', qrCodeData);
+  console.log('Received Amount:', amount);
+
+  if (!qrCodeData) {
+    return c.json(
+      { error: 'Invalid input. Please provide QR code data.' },
+      400
+    );
+  }
+
+  // Check if amount is provided to determine the action
+  if (amount !== undefined) {
+    // This is a loyalty points action
+    if (isNaN(amount) || amount <= 0) {
+      return c.json(
+        {
+          error:
+            'Invalid input. Please provide a valid amount for loyalty points.',
+        },
+        400
+      );
+    }
+    return awardLoyaltyPoints(c);
+  } else {
+    // This is a coupon verification action
+    if (!qrCodeData.includes('-')) {
+      return c.json(
+        { error: 'Invalid QR code format for coupon verification.' },
+        400
+      );
+    }
+    return verifyCoupon(c);
+  }
 };

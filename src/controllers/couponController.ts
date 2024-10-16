@@ -71,75 +71,77 @@ export const createCoupon = async (c: Context) => {
 };
 
 export const redeemCoupon = async (c: Context) => {
-  try {
-    const user = c.get('user');
-    if (!user || !user.sub) {
-      return c.json({ error: 'Not authenticated' }, 401);
-    }
+  const user = c.get('user');
+  const { couponId } = await c.req.json();
 
-    const userId = user.sub;
-    const { couponId } = await c.req.json();
-
-    if (!couponId) {
-      return c.json(
-        { error: 'Invalid input. Please provide a valid coupon ID.' },
-        400
-      );
-    }
-
-    const { data: coupon, error: couponError } = await supabase
-      .from('coupons')
-      .select('*')
-      .eq('id', couponId)
-      .single();
-
-    if (couponError) throw couponError;
-    if (!coupon) {
-      return c.json({ error: 'Coupon not found' }, 404);
-    }
-
-    const { data: loyaltyPoints, error: loyaltyError } = await supabase
-      .from('loyalty_points')
-      .select('points')
-      .eq('user_id', userId)
-      .eq('business_id', coupon.business_id)
-      .single();
-
-    if (loyaltyError) throw loyaltyError;
-    if (!loyaltyPoints || loyaltyPoints.points < coupon.points_required) {
-      return c.json(
-        { error: 'Insufficient points to redeem this coupon' },
-        400
-      );
-    }
-
-    const { data: redeemedCoupon, error: redeemError } = await supabase.rpc(
-      'redeem_coupon',
-      {
-        p_user_id: userId,
-        p_coupon_id: couponId,
-        p_points_required: coupon.points_required,
-      }
-    );
-
-    if (redeemError) throw redeemError;
-
-    const qrCodeData = `${redeemedCoupon.id}-${Date.now()}`;
-    const qrCodeImage = await generateQRCode(qrCodeData);
-
-    return c.json({
-      message: 'Coupon redeemed successfully',
-      redeemedCoupon,
-      qrCode: qrCodeImage,
-      qrCodeData,
-    });
-  } catch (error) {
-    return handleError(c, error);
+  if (!user || !user.sub) {
+    return c.json({ error: 'Not authenticated' }, 401);
   }
+
+  const userId = user.sub;
+
+  if (!couponId) {
+    return c.json({ error: 'Coupon ID is required' }, 400);
+  }
+
+  // Fetch the coupon and include the business_id
+  const { data: coupon, error: couponError } = await supabase
+    .from('coupons')
+    .select('*, business_id')
+    .eq('id', couponId)
+    .single();
+
+  if (couponError) {
+    console.error('Error fetching coupon:', couponError);
+    return c.json({ error: 'Invalid coupon' }, 400);
+  }
+
+  if (!coupon) {
+    return c.json({ error: 'Coupon not found' }, 404);
+  }
+  /*
+  // Check if the coupon has already been redeemed
+  const { data: existingRedemption, error: redemptionError } = await supabase
+    .from('redeemed_coupons')
+    .select('*')
+    .eq('coupon_id', couponId)
+    .eq('user_id', userId);
+
+  if (redemptionError) {
+    console.error('Error checking redemption:', redemptionError);
+    return c.json({ error: 'Error checking coupon redemption' }, 500);
+  }
+
+  if (existingRedemption && existingRedemption.length > 0) {
+    return c.json({ error: 'Coupon has already been redeemed' }, 400);
+  }
+*/
+  // Insert the redeemed coupon with the business_id
+  const { data: redemption, error: insertError } = await supabase
+    .from('redeemed_coupons')
+    .insert({
+      coupon_id: couponId,
+      user_id: userId,
+      business_id: coupon.business_id,
+      redeemed_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    console.error('Error redeeming coupon:', insertError);
+    return c.json({ error: 'Error redeeming coupon' }, 500);
+  }
+
+  return c.json({
+    message: 'Coupon redeemed successfully',
+    redemption: redemption,
+  });
 };
 
 export const verifyCoupon = async (c: Context) => {
   const user = c.get('user');
+  const { qrCodeData } = await c.req.json();
 
   if (!user || !user.sub) {
     return c.json({ error: 'Not authenticated' }, 401);
@@ -161,8 +163,6 @@ export const verifyCoupon = async (c: Context) => {
     );
   }
 
-  const { qrCodeData } = await c.req.json();
-
   if (!qrCodeData) {
     return c.json(
       { error: 'Invalid input. Please provide QR code data.' },
@@ -171,19 +171,20 @@ export const verifyCoupon = async (c: Context) => {
   }
 
   // Parse the QR code data
-  const parts = qrCodeData.split('-');
-  if (parts.length !== 6) {
-    return c.json({ error: 'Invalid QR code format' }, 400);
-  }
+  let redeemedCouponId: string;
 
-  const redeemedCouponId = parts.slice(0, 5).join('-'); // Reconstruct the UUID
-  const timestamp = parts[5];
-
-  // Validate UUID format
+  // Check if the qrCodeData is a valid UUID
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(redeemedCouponId)) {
-    return c.json({ error: 'Invalid coupon ID format' }, 400);
+  if (uuidRegex.test(qrCodeData)) {
+    redeemedCouponId = qrCodeData;
+  } else {
+    // If not a UUID, try the old format
+    const parts = qrCodeData.split('-');
+    if (parts.length !== 6) {
+      return c.json({ error: 'Invalid QR code format' }, 400);
+    }
+    redeemedCouponId = parts.slice(0, 5).join('-'); // Reconstruct the UUID
   }
 
   // Verify the redeemed coupon
@@ -213,6 +214,39 @@ export const verifyCoupon = async (c: Context) => {
     return c.json({ error: 'This coupon has already been used' }, 400);
   }
 
+  // Fetch user's current points
+  const { data: userPoints, error: pointsError } = await supabase
+    .from('loyalty_points')
+    .select('points')
+    .eq('user_id', redeemedCoupon.user_id)
+    .eq('business_id', staffData.business_id)
+    .single();
+
+  if (pointsError) {
+    console.error('Error fetching user points:', pointsError);
+    return c.json({ error: 'Error fetching user points' }, 500);
+  }
+
+  const currentPoints = userPoints?.points || 0;
+  const requiredPoints = redeemedCoupon.coupons.points_required;
+
+  if (currentPoints < requiredPoints) {
+    return c.json({ error: 'Insufficient points to redeem this coupon' }, 400);
+  }
+
+  // Deduct points
+  const newPoints = currentPoints - requiredPoints;
+  const { error: updatePointsError } = await supabase
+    .from('loyalty_points')
+    .update({ points: newPoints })
+    .eq('user_id', redeemedCoupon.user_id)
+    .eq('business_id', staffData.business_id);
+
+  if (updatePointsError) {
+    console.error('Error updating points:', updatePointsError);
+    return c.json({ error: 'Error deducting points' }, 500);
+  }
+
   // Mark the coupon as used
   const { error: updateError } = await supabase
     .from('redeemed_coupons')
@@ -234,13 +268,16 @@ export const verifyCoupon = async (c: Context) => {
     action_details: {
       coupon_id: redeemedCoupon.id,
       coupon_name: redeemedCoupon.coupons.name,
+      points_deducted: requiredPoints,
     },
     business_id: staffData.business_id,
   });
 
   return c.json({
-    message: 'Coupon verified successfully',
+    message: 'Coupon verified and points deducted successfully',
     coupon: redeemedCoupon.coupons,
+    pointsDeducted: requiredPoints,
+    newPointsBalance: newPoints,
   });
 };
 
