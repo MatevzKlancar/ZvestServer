@@ -2,8 +2,9 @@
   "name": "zvest",
   "scripts": {
     "dev": "bun run --env-file=.env --hot src/index.ts",
-    "build": "bun build src/index.ts --outdir=dist",
-    "start": "node dist/index.js"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "vercel-build": "echo 'No build step required'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
