@@ -1,7 +1,8 @@
 {
   "name": "zvest",
   "scripts": {
-    "dev": "bun run --env-file=.env --hot src/index.ts"
+    "dev": "bun run --env-file=.env --hot src/index.ts",
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
