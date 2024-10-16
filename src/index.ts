@@ -16,7 +16,7 @@ const app = new Hono();
 app.use(
   '*',
   cors({
-    origin: ['http://localhost:5173'],
+    origin: ['http://localhost:5173', 'https://zvestserver.onrender.com/'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['Content-Length'],
