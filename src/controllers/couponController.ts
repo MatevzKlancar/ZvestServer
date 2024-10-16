@@ -87,7 +87,7 @@ export const redeemCoupon = async (c: Context) => {
   // Fetch the coupon and include the business_id
   const { data: coupon, error: couponError } = await supabase
     .from('coupons')
-    .select('*, business_id')
+    .select('*, business_id, max_redemptions')
     .eq('id', couponId)
     .single();
 
@@ -99,24 +99,25 @@ export const redeemCoupon = async (c: Context) => {
   if (!coupon) {
     return c.json({ error: 'Coupon not found' }, 404);
   }
-  /*
-  // Check if the coupon has already been redeemed
-  const { data: existingRedemption, error: redemptionError } = await supabase
-    .from('redeemed_coupons')
-    .select('*')
-    .eq('coupon_id', couponId)
-    .eq('user_id', userId);
 
-  if (redemptionError) {
-    console.error('Error checking redemption:', redemptionError);
-    return c.json({ error: 'Error checking coupon redemption' }, 500);
+  // Check if the coupon has reached its maximum redemptions
+  if (coupon.max_redemptions !== null) {
+    const { count, error: countError } = await supabase
+      .from('redeemed_coupons')
+      .select('*', { count: 'exact' })
+      .eq('coupon_id', couponId);
+
+    if (countError) {
+      console.error('Error counting redemptions:', countError);
+      return c.json({ error: 'Error checking coupon redemptions' }, 500);
+    }
+
+    if (count !== null && count >= coupon.max_redemptions) {
+      return c.json({ error: 'Coupon has reached maximum redemptions' }, 400);
+    }
   }
 
-  if (existingRedemption && existingRedemption.length > 0) {
-    return c.json({ error: 'Coupon has already been redeemed' }, 400);
-  }
-*/
-  // Insert the redeemed coupon with the business_id
+  // Insert the redeemed coupon
   const { data: redemption, error: insertError } = await supabase
     .from('redeemed_coupons')
     .insert({
@@ -210,8 +211,8 @@ export const verifyCoupon = async (c: Context) => {
     );
   }
 
-  if (redeemedCoupon.used) {
-    return c.json({ error: 'This coupon has already been used' }, 400);
+  if (redeemedCoupon.verified) {
+    return c.json({ error: 'This coupon has already been verified' }, 400);
   }
 
   // Fetch user's current points
@@ -247,10 +248,10 @@ export const verifyCoupon = async (c: Context) => {
     return c.json({ error: 'Error deducting points' }, 500);
   }
 
-  // Mark the coupon as used
+  // Mark the coupon as verified
   const { error: updateError } = await supabase
     .from('redeemed_coupons')
-    .update({ used: true, used_at: new Date().toISOString() })
+    .update({ verified: true, verified_at: new Date().toISOString() })
     .eq('id', redeemedCouponId);
 
   if (updateError) {
