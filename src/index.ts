@@ -9,6 +9,7 @@ import { errorHandler } from './utils/errorHandler';
 import qrCodeRouter from './routes/qrCodeRoutes';
 import loyaltyRouter from './routes/loyaltyRoutes';
 import staffRouter from './routes/staffRoutes';
+import businessRouter from './routes/businessRoutes';
 
 const app = new Hono();
 
@@ -39,6 +40,7 @@ app.get('/auth/signup-success', (c) =>
 );
 app.route('/api/loyalty', loyaltyRouter);
 app.route('/api/staff', staffRouter);
+app.route('/api/business', businessRouter);
 
 // Error handling
 app.onError(errorHandler);
