@@ -1,6 +1,5 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
-import { randomUUID } from 'crypto';
 
 export const awardLoyaltyPoints = async (c: Context) => {
   const user = c.get('user');
