@@ -8,6 +8,6 @@ businessRouter.use('*', authMiddleware);
 businessRouter.post('/create', businessController.createBusiness);
 businessRouter.put('/update', businessController.updateBusiness);
 businessRouter.delete('/delete', businessController.deleteBusiness);
-businessRouter.get('/get', businessController.getBusiness); // New route
+businessRouter.get('/get', businessController.getBusiness);
 
 export default businessRouter;
