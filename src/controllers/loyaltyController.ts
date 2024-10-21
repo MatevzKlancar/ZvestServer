@@ -50,20 +50,16 @@ export const awardLoyaltyPoints = async (c: Context) => {
     return c.json({ error: 'Invalid or non-existent user.' }, 400);
   }
 
-  // Award points
-  const { data, error } = await supabase
-    .from('loyalty_points')
-    .insert({
-      user_id: userId,
-      business_id: staffData.business_id,
-      points: amount,
-      awarded_by: staffData.user_id,
-      awarded_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  // Start a Supabase transaction
+  const { data, error } = await supabase.rpc('award_loyalty_points', {
+    p_user_id: userId,
+    p_business_id: staffData.business_id,
+    p_points: amount,
+    p_awarded_by: staffData.user_id,
+  });
 
   if (error) {
+    console.error('Error awarding loyalty points:', error);
     return c.json({ error: 'Error awarding loyalty points' }, 500);
   }
 
@@ -80,7 +76,8 @@ export const awardLoyaltyPoints = async (c: Context) => {
 
   return c.json({
     message: 'Loyalty points awarded successfully',
-    awarded: data.points,
+    awarded: amount,
+    total_points: data.total_points,
   });
 };
 
@@ -146,5 +143,53 @@ export const getLoyaltyPointsInfo = async (c: Context) => {
   return c.json({
     message: 'Loyalty points information retrieved successfully',
     data: loyaltyPointsData,
+  });
+};
+
+export const getUserLoyaltyPoints = async (c: Context) => {
+  const user = c.get('user');
+  const businessId = c.req.query('business_id');
+
+  if (!user || !user.sub) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const userId = user.sub;
+
+  let query = supabase
+    .from('user_loyalty_points')
+    .select('business_id, total_points, businesses(name)')
+    .eq('user_id', userId);
+
+  if (businessId) {
+    // Validate the business_id format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(businessId)) {
+      return c.json({ error: 'Invalid business ID format' }, 400);
+    }
+    query = query.eq('business_id', businessId);
+  }
+
+  const { data: userPoints, error } = await query;
+
+  if (error) {
+    console.error('Error fetching user loyalty points:', error);
+    if (error.code === '22P02') {
+      return c.json({ error: 'Invalid business ID format' }, 400);
+    }
+    return c.json({ error: 'Error fetching loyalty points' }, 500);
+  }
+
+  if (businessId && userPoints.length === 0) {
+    return c.json(
+      { error: 'No loyalty points found for the specified business' },
+      404
+    );
+  }
+
+  return c.json({
+    message: 'User loyalty points retrieved successfully',
+    data: userPoints,
   });
 };
