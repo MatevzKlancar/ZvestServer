@@ -1,6 +1,8 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
 import { Session } from '@supabase/supabase-js';
+import CustomError from '../utils/customError';
+import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 
 // Extend the Session type to include user_role
 interface ExtendedSession extends Session {
@@ -11,17 +13,27 @@ export const signUp = async (c: Context) => {
   try {
     const { email, password } = await c.req.json();
 
+    if (!email || !password) {
+      throw new CustomError('Email and password are required', 400);
+    }
+
     const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
-      return c.json({ error: error.message }, 400);
+      throw new CustomError(error.message, 400);
     }
 
-    return c.json({
-      message: 'Please check your email to confirm your account.',
-    });
+    return sendSuccessResponse(
+      c,
+      data,
+      'Please check your email to confirm your account.',
+      201
+    );
   } catch (error) {
-    return c.json({ error: 'An unexpected error occurred' }, 500);
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };
 
@@ -31,31 +43,28 @@ export const login = async (c: Context) => {
     let data, error;
 
     if ('access_token' in body) {
-      // Login with access token
       const { data: sessionData, error: sessionError } =
         await supabase.auth.getSession();
       if (sessionError) {
-        return c.json({ error: sessionError.message }, 401);
+        throw new CustomError(sessionError.message, 401);
       }
       data = sessionData;
-      error = null;
     } else if ('email' in body && 'password' in body) {
-      // Login with email and password
       const { email, password } = body;
       ({ data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       }));
     } else {
-      return c.json({ error: 'Invalid login credentials' }, 400);
+      throw new CustomError('Invalid login credentials', 400);
     }
 
     if (error) {
-      return c.json({ error: error.message }, 400);
+      throw new CustomError(error.message, 400);
     }
 
     if (!data.session || !data.session.user) {
-      return c.json({ error: 'No session or user data found' }, 400);
+      throw new CustomError('No session or user data found', 400);
     }
 
     // Fetch user role from all_users table
@@ -66,7 +75,7 @@ export const login = async (c: Context) => {
       .single();
 
     if (userError) {
-      return c.json({ error: 'Error fetching user role' }, 500);
+      throw new CustomError('Error fetching user role', 500);
     }
 
     // Create an extended session object
@@ -75,11 +84,16 @@ export const login = async (c: Context) => {
       user_role: userData.role,
     };
 
-    return c.json({
-      session: extendedSession,
-    });
+    return sendSuccessResponse(
+      c,
+      { session: extendedSession },
+      'Login successful'
+    );
   } catch (error) {
-    return c.json({ error: 'An unexpected error occurred' }, 500);
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };
 

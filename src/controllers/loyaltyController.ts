@@ -1,5 +1,7 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
+import CustomError from '../utils/customError';
+import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 
 export const awardLoyaltyPoints = async (c: Context) => {
   const user = c.get('user');
@@ -82,68 +84,72 @@ export const awardLoyaltyPoints = async (c: Context) => {
 };
 
 export const getLoyaltyPointsInfo = async (c: Context) => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  try {
+    const user = c.get('user');
 
-  if (!session) {
-    return c.json({ error: 'Not authenticated' }, 401);
-  }
+    if (!user || !user.sub) {
+      throw new CustomError('Not authenticated', 401);
+    }
 
-  const staffUserId = session.user.id;
+    const staffUserId = user.sub;
 
-  // Check if the user is a staff member or owner and get business info
-  const { data: staffData, error: staffError } = await supabase
-    .from('all_users')
-    .select('user_id, business_id, role')
-    .eq('user_id', staffUserId)
-    .single();
+    // Check if the user is a staff member or owner and get business info
+    const { data: staffData, error: staffError } = await supabase
+      .from('all_users')
+      .select('user_id, business_id, role')
+      .eq('user_id', staffUserId)
+      .single();
 
-  if (
-    staffError ||
-    (staffData.role !== 'Staff' && staffData.role !== 'Owner')
-  ) {
-    return c.json(
-      {
-        error:
-          'Access denied. Only staff members or owners can view loyalty points information.',
-      },
-      403
-    );
-  }
+    if (
+      staffError ||
+      (staffData.role !== 'Staff' && staffData.role !== 'Owner')
+    ) {
+      throw new CustomError(
+        'Access denied. Only staff members or owners can view loyalty points information.',
+        403
+      );
+    }
 
-  // Get loyalty points information for the business
-  const { data: loyaltyPointsData, error: loyaltyPointsError } = await supabase
-    .from('loyalty_points')
-    .select(
+    // Get loyalty points information for the business
+    const { data: loyaltyPointsData, error: loyaltyPointsError } =
+      await supabase
+        .from('loyalty_points')
+        .select(
+          `
+        id,
+        user_id,
+        points,
+        awarded_by,
+        awarded_at,
+        customer:all_users!loyalty_points_user_id_fkey (
+          email,
+          role
+        ),
+        staff:all_users!loyalty_points_awarded_by_fkey (
+          email,
+          role
+        )
       `
-      id,
-      user_id,
-      points,
-      awarded_by,
-      awarded_at,
-      customer:all_users!loyalty_points_user_id_fkey (
-        email,
-        role
-      ),
-      staff:all_users!loyalty_points_awarded_by_fkey (
-        email,
-        role
-      )
-    `
-    )
-    .eq('business_id', staffData.business_id)
-    .order('awarded_at', { ascending: false });
+        )
+        .eq('business_id', staffData.business_id)
+        .order('awarded_at', { ascending: false });
 
-  if (loyaltyPointsError) {
-    console.error('Error fetching loyalty points data:', loyaltyPointsError);
-    return c.json({ error: 'Error fetching loyalty points data' }, 500);
+    if (loyaltyPointsError) {
+      throw new CustomError('Error fetching loyalty points data', 500);
+    }
+
+    return sendSuccessResponse(
+      c,
+      { data: loyaltyPointsData },
+      'Loyalty points information retrieved successfully'
+    );
+  } catch (error) {
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
-
-  return c.json({
-    message: 'Loyalty points information retrieved successfully',
-    data: loyaltyPointsData,
-  });
 };
 
 export const getUserLoyaltyPoints = async (c: Context) => {

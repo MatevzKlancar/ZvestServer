@@ -1,11 +1,14 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
+import CustomError from '../utils/customError';
+import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
+
 export const createBusiness = async (c: Context) => {
   try {
     const user = c.get('user');
 
     if (!user || !user.sub) {
-      return c.json({ error: 'Not authenticated' }, 401);
+      throw new CustomError('Not authenticated', 401);
     }
 
     const ownerId = user.sub;
@@ -18,14 +21,14 @@ export const createBusiness = async (c: Context) => {
       .single();
 
     if (ownerError || ownerData.role !== 'Owner') {
-      return c.json(
-        { error: 'Access denied. Only owners can create businesses.' },
+      throw new CustomError(
+        'Access denied. Only owners can create businesses.',
         403
       );
     }
 
     if (ownerData.business_id) {
-      return c.json({ error: 'You have already created a business.' }, 400);
+      throw new CustomError('You have already created a business.', 400);
     }
 
     const formData = await c.req.formData();
@@ -35,16 +38,13 @@ export const createBusiness = async (c: Context) => {
     const businessDataString = formData.get('businessData') as string;
 
     if (!businessDataString) {
-      return c.json({ error: 'Business data is missing' }, 400);
+      throw new CustomError('Business data is missing', 400);
     }
 
     const businessData = JSON.parse(businessDataString);
 
-    console.log('businessData:', businessData); // For debugging
-
-    // Validate required fields
     if (!businessData.name || businessData.name.trim() === '') {
-      return c.json({ error: 'Name is required.' }, 400);
+      throw new CustomError('Name is required.', 400);
     }
 
     let imageUrl = null;
@@ -98,11 +98,7 @@ export const createBusiness = async (c: Context) => {
       .single();
 
     if (insertError) {
-      console.error('Error creating business:', insertError);
-      return c.json(
-        { error: 'Error creating business', details: insertError },
-        500
-      );
+      throw new CustomError('Error creating business', 500);
     }
 
     // Update the owner's business_id in the all_users table
@@ -112,20 +108,21 @@ export const createBusiness = async (c: Context) => {
       .eq('user_id', ownerId);
 
     if (updateError) {
-      console.error('Error updating owner business_id:', updateError);
-      return c.json({ error: 'Error updating owner information' }, 500);
+      throw new CustomError('Error updating owner information', 500);
     }
 
-    return c.json({
-      message: 'Business created successfully',
-      business,
-    });
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return c.json(
-      { error: 'An unexpected error occurred', details: error },
-      500
+    return sendSuccessResponse(
+      c,
+      { business },
+      'Business created successfully',
+      201
     );
+  } catch (error) {
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };
 
