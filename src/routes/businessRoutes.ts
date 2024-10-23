@@ -9,11 +9,13 @@ businessRouter.post('/create', businessController.createBusiness);
 businessRouter.put('/update', businessController.updateBusiness);
 businessRouter.delete('/delete', businessController.deleteBusiness);
 businessRouter.get('/get', businessController.getBusiness);
-
-// Add this new route
 businessRouter.get(
   '/all/:businessId?',
   businessController.getAllOrSpecificBusiness
+);
+businessRouter.get(
+  '/user-businesses-with-points',
+  businessController.getUserBusinessesWithPoints
 );
 
 export default businessRouter;

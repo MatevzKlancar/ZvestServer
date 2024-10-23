@@ -421,3 +421,52 @@ export const getAllOrSpecificBusiness = async (c: Context) => {
     return c.json({ error: 'An unexpected error occurred' }, 500);
   }
 };
+
+export const getUserBusinessesWithPoints = async (c: Context) => {
+  try {
+    const user = c.get('user');
+
+    if (!user || !user.sub) {
+      return c.json({ error: 'Not authenticated' }, 401);
+    }
+
+    const userId = user.sub;
+
+    const { data, error } = await supabase
+      .from('user_loyalty_points')
+      .select(
+        `
+        total_points,
+        businesses (
+          id,
+          name,
+          description,
+          image_url
+        )
+      `
+      )
+      .eq('user_id', userId)
+      .gt('total_points', 0);
+
+    if (error) {
+      console.error('Error fetching user businesses with points:', error);
+      return c.json(
+        { error: 'Error fetching user businesses with points' },
+        500
+      );
+    }
+
+    const formattedData = data.map((item) => ({
+      ...item.businesses,
+      points: item.total_points,
+    }));
+
+    return c.json({
+      message: 'User businesses with points retrieved successfully',
+      businesses: formattedData,
+    });
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return c.json({ error: 'An unexpected error occurred' }, 500);
+  }
+};
