@@ -1,6 +1,5 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
-import { generateQRCode } from '../utils/qrCodeGenerator';
 import { awardLoyaltyPoints } from './loyaltyController';
 import { verifyCoupon } from './couponController';
 
@@ -31,12 +30,12 @@ export const getQRCode = async (c: Context) => {
     );
   }
 
-  // Rest of the existing code for QR code fetching/generation
+  // Check for existing unused QR code
   const { data: existingQRCode, error: fetchError } = await supabase
     .from('qr_codes')
     .select('*')
     .eq('user_id', userId)
-    .gt('expires_at', new Date().toISOString())
+    .eq('used', false)
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
@@ -50,20 +49,14 @@ export const getQRCode = async (c: Context) => {
   if (existingQRCode) {
     qrCode = existingQRCode;
   } else {
-    const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000); // 10 minutes from now
-
-    const uniqueIdentifier = `${userId}-${createdAt.getTime()}`;
-    const qrCodeData = await generateQRCode(uniqueIdentifier);
-    const base64Data = qrCodeData.split(',')[1];
+    const uniqueIdentifier = `${userId}-${Date.now()}`;
 
     const { data: newQRCode, error: insertError } = await supabase
       .from('qr_codes')
       .insert({
         user_id: userId,
-        qr_data: base64Data,
-        created_at: createdAt.toISOString(),
-        expires_at: expiresAt.toISOString(),
+        qr_data: uniqueIdentifier,
+        used: false,
       })
       .select()
       .single();
@@ -79,10 +72,7 @@ export const getQRCode = async (c: Context) => {
     qrCode: {
       id: qrCode.id,
       data: qrCode.qr_data,
-      format: 'png',
-      encoding: 'base64',
       createdAt: qrCode.created_at,
-      expiresAt: qrCode.expires_at,
     },
   });
 };
@@ -112,14 +102,25 @@ export const handleQRCode = async (c: Context) => {
 
   const { qrCodeData, amount } = await c.req.json();
 
-  console.log('Received QR Code Data:', qrCodeData);
-  console.log('Received Amount:', amount);
-
   if (!qrCodeData) {
     return c.json(
       { error: 'Invalid input. Please provide QR code data.' },
       400
     );
+  }
+
+  // Verify and mark QR code as used
+  const { data: qrCode, error: qrCodeError } = await supabase
+    .from('qr_codes')
+    .update({ used: true })
+    .eq('qr_data', qrCodeData)
+    .eq('used', false)
+    .select()
+    .single();
+
+  if (qrCodeError || !qrCode) {
+    console.error('QR Code Error:', qrCodeError);
+    return c.json({ error: 'Invalid or already used QR code.' }, 400);
   }
 
   // Check if amount is provided to determine the action
@@ -137,12 +138,6 @@ export const handleQRCode = async (c: Context) => {
     return awardLoyaltyPoints(c);
   } else {
     // This is a coupon verification action
-    if (!qrCodeData.includes('-')) {
-      return c.json(
-        { error: 'Invalid QR code format for coupon verification.' },
-        400
-      );
-    }
     return verifyCoupon(c);
   }
 };
