@@ -3,7 +3,6 @@ config();
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { signUp, confirmSignUp } from './controllers/authController';
 import { errorHandler } from './utils/errorHandler';
 import dashboardRouter from './routes/dashboardRoutes';
 import clientRouter from './routes/clientRoutes';

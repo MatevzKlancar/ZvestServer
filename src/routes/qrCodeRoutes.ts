@@ -5,7 +5,6 @@ import { authMiddleware } from '../middleware/authMiddleware';
 const qrCodeRouter = new Hono();
 
 qrCodeRouter.use('*', authMiddleware);
-qrCodeRouter.get('/users-qr-code', qrCodeController.getQRCode);
-qrCodeRouter.post('/scan', qrCodeController.handleQRCode);
+qrCodeRouter.get('', qrCodeController.getQRCode);
 
 export default qrCodeRouter;
