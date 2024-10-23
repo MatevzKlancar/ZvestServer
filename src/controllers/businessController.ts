@@ -155,76 +155,88 @@ export const updateBusiness = async (c: Context) => {
 
     const formData = await c.req.formData();
     const image = formData.get('image') as File | null;
+    const backgroundImage = formData.get('backgroundImage') as File | null;
+    const infoImages = formData.getAll('infoImages') as File[];
+    const businessDataString = formData.get('businessData') as string;
 
-    const businessData = JSON.parse(formData.get('businessData') as string);
+    const businessData = JSON.parse(businessDataString);
 
-    const {
-      name,
-      openingTime,
-      phoneNumber,
-      location,
-      description,
-      companyName,
-      registrationPlace,
-      registryNumber,
-      website,
-      loyaltyType,
-    } = businessData;
+    const updateData: any = {};
 
-    let imageUrl = null;
+    // Only include fields that are provided and not empty
+    if (businessData.name !== undefined) updateData.name = businessData.name;
+    if (businessData.openingTime !== undefined)
+      updateData.opening_time = businessData.openingTime;
+    if (businessData.phoneNumber !== undefined)
+      updateData.phone_number = businessData.phoneNumber;
+    if (businessData.location !== undefined)
+      updateData.location = businessData.location;
+    if (businessData.description !== undefined)
+      updateData.description = businessData.description;
+    if (businessData.companyName !== undefined)
+      updateData.company_name = businessData.companyName;
+    if (businessData.registrationPlace !== undefined)
+      updateData.registration_place = businessData.registrationPlace;
+    if (businessData.registryNumber !== undefined)
+      updateData.registry_number = businessData.registryNumber;
+    if (businessData.website !== undefined)
+      updateData.website = businessData.website;
+    if (businessData.loyaltyType !== undefined)
+      updateData.loyalty_type = businessData.loyaltyType;
 
+    // Handle image uploads
     if (image) {
-      const fileExt = image.name.split('.').pop();
-      const fileName = `${ownerId}-${Date.now()}.${fileExt}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('business-images')
-        .upload(fileName, image);
+      const imageUrl = await uploadImage(image, ownerId, 'business-images');
+      if (imageUrl) updateData.image_url = imageUrl;
+    }
 
-      if (uploadError) {
-        console.error('Error uploading image:', uploadError);
-        // Continue without updating the image
-      } else {
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('business-images').getPublicUrl(fileName);
+    if (backgroundImage) {
+      const backgroundImageUrl = await uploadImage(
+        backgroundImage,
+        ownerId,
+        'business-background-images'
+      );
+      if (backgroundImageUrl)
+        updateData.background_image_url = backgroundImageUrl;
+    }
 
-        imageUrl = publicUrl;
+    if (infoImages.length > 0) {
+      const infoImageUrls = [];
+      for (const infoImage of infoImages) {
+        const infoImageUrl = await uploadImage(
+          infoImage,
+          ownerId,
+          'business-info-images'
+        );
+        if (infoImageUrl) infoImageUrls.push(infoImageUrl);
       }
+      if (infoImageUrls.length > 0) updateData.info_image_urls = infoImageUrls;
     }
 
-    const updateData: any = {
-      name,
-      opening_time: openingTime,
-      phone_number: phoneNumber,
-      location,
-      description,
-      company_name: companyName,
-      registration_place: registrationPlace,
-      registry_number: registryNumber,
-      website,
-      loyalty_type: loyaltyType,
-    };
+    // Only proceed with the update if there are fields to update
+    if (Object.keys(updateData).length > 0) {
+      const { data: updatedBusiness, error: updateError } = await supabase
+        .from('businesses')
+        .update(updateData)
+        .eq('id', ownerData.business_id)
+        .select()
+        .single();
 
-    if (imageUrl) {
-      updateData.image_url = imageUrl;
+      if (updateError) {
+        console.error('Error updating business:', updateError);
+        return c.json({ error: 'Error updating business' }, 500);
+      }
+
+      return c.json({
+        message: 'Business updated successfully',
+        business: updatedBusiness,
+      });
+    } else {
+      return c.json({
+        message: 'No fields to update',
+        business: null,
+      });
     }
-
-    const { data: updatedBusiness, error: updateError } = await supabase
-      .from('businesses')
-      .update(updateData)
-      .eq('id', ownerData.business_id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error updating business:', updateError);
-      return c.json({ error: 'Error updating business' }, 500);
-    }
-
-    return c.json({
-      message: 'Business updated successfully',
-      business: updatedBusiness,
-    });
   } catch (error) {
     console.error('Unexpected error:', error);
     return c.json({ error: 'An unexpected error occurred' }, 500);
