@@ -286,7 +286,6 @@ export const deleteBusiness = async (c: Context) => {
         message: 'Business deleted successfully',
       });
     } catch (transactionError) {
-      // Rollback the transaction if any error occurs
       const { error: rollbackError } = await supabase.rpc(
         'rollback_transaction'
       );
@@ -381,3 +380,44 @@ async function uploadImage(
 
   return data.publicUrl;
 }
+
+// Add this new function at the end of the file
+
+export const getAllOrSpecificBusiness = async (c: Context) => {
+  try {
+    const user = c.get('user');
+
+    if (!user || !user.sub) {
+      return c.json({ error: 'Not authenticated' }, 401);
+    }
+
+    const businessId = c.req.param('businessId');
+
+    let query = supabase.from('businesses').select('*');
+
+    if (businessId) {
+      query = query.eq('id', businessId);
+    }
+
+    const { data: businesses, error } = await query;
+
+    if (error) {
+      console.error('Error fetching businesses:', error);
+      return c.json({ error: 'Error fetching businesses' }, 500);
+    }
+
+    if (businessId && businesses.length === 0) {
+      return c.json({ error: 'Business not found' }, 404);
+    }
+
+    return c.json({
+      message: businessId
+        ? 'Business retrieved successfully'
+        : 'Businesses retrieved successfully',
+      businesses: businessId ? businesses[0] : businesses,
+    });
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return c.json({ error: 'An unexpected error occurred' }, 500);
+  }
+};

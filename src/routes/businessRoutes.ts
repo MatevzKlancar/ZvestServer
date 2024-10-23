@@ -10,4 +10,10 @@ businessRouter.put('/update', businessController.updateBusiness);
 businessRouter.delete('/delete', businessController.deleteBusiness);
 businessRouter.get('/get', businessController.getBusiness);
 
+// Add this new route
+businessRouter.get(
+  '/all/:businessId?',
+  businessController.getAllOrSpecificBusiness
+);
+
 export default businessRouter;
