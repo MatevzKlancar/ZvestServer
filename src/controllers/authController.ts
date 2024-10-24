@@ -128,7 +128,7 @@ export const confirmSignUp = async (c: Context) => {
       const { error: insertError } = await supabase.from('all_users').insert({
         user_id: data.user.id,
         email: data.user.email,
-        role: 'Owner',
+        role: 'Client',
       });
 
       if (insertError) {
