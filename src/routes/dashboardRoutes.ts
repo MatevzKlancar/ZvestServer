@@ -4,6 +4,7 @@ import loyaltyRouter from './loyaltyRoutes';
 import staffRouter from './staffRoutes';
 import { handleQRCode } from '../controllers/qrCodeController';
 import { authMiddleware } from '../middleware/authMiddleware';
+import invitationRouter from './invitationRouter';
 
 const dashboardRouter = new Hono();
 
@@ -13,5 +14,6 @@ dashboardRouter.route('/business', businessRouter);
 dashboardRouter.route('/loyalty', loyaltyRouter);
 dashboardRouter.route('/staff', staffRouter);
 dashboardRouter.post('/scan', handleQRCode);
+dashboardRouter.route('/invitations', invitationRouter);
 
 export default dashboardRouter;

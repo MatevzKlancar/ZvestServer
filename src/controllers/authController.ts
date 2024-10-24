@@ -99,25 +99,16 @@ export const login = async (c: Context) => {
 
 export const confirmSignUp = async (c: Context) => {
   try {
-    const token = c.req.query('token_hash');
-    const type = c.req.query('type');
+    const token = c.req.query('token_hash') || '';
+    const type = c.req.query('type') || '';
 
-    if (type !== 'signup' || !token) {
+    if (!token || !['signup', 'invite'].includes(type)) {
       return c.text('Invalid confirmation link', 400);
-    }
-
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const frontendUrl = process.env.FRONTEND_URL; // Add this to your environment variables
-    if (!supabaseUrl || !frontendUrl) {
-      console.error(
-        'SUPABASE_URL or FRONTEND_URL is not set in the environment variables'
-      );
-      return c.text('Server configuration error', 500);
     }
 
     const { data, error } = await supabase.auth.verifyOtp({
       token_hash: token,
-      type: 'signup',
+      type: type === 'invite' ? 'invite' : 'signup',
     });
 
     if (error) {
@@ -125,32 +116,34 @@ export const confirmSignUp = async (c: Context) => {
     }
 
     if (data.user && data.user.id) {
-      const { error: insertError } = await supabase.from('all_users').insert({
+      const role = type === 'invite' ? 'Staff' : 'Client';
+      const email = data.user.email;
+      const business_id =
+        role === 'Staff' ? data.user.user_metadata?.business_id : null;
+
+      const userData = {
         user_id: data.user.id,
-        email: data.user.email,
-        role: 'Client',
-      });
+        email,
+        role,
+        business_id,
+      };
+
+      const { error: insertError } = await supabase
+        .from('all_users')
+        .insert(userData);
 
       if (insertError) {
-        console.error(
-          'Error inserting user data into users table:',
-          insertError
-        );
-      } else {
-        console.log('User data inserted successfully into users table');
+        console.error('Error inserting user data:', insertError);
       }
     }
 
-    // Generate a login URL with the session token
-    const loginUrl = `${frontendUrl}/login?session=${encodeURIComponent(JSON.stringify(data.session))}`;
+    const loginUrl = `${process.env.FRONTEND_URL}/login?session=${encodeURIComponent(
+      JSON.stringify(data.session)
+    )}`;
 
-    // Redirect to the frontend login page with the session data
     return c.redirect(loginUrl);
   } catch (error) {
-    console.error('Error during confirmation:', error);
-    return c.text(
-      'An error occurred during confirmation. Please try again.',
-      500
-    );
+    console.error('Error in confirmSignUp:', error);
+    return c.text('An error occurred during confirmation', 500);
   }
 };
