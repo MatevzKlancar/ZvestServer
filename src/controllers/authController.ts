@@ -11,13 +11,25 @@ interface ExtendedSession extends Session {
 
 export const signUp = async (c: Context) => {
   try {
-    const { email, password } = await c.req.json();
+    const { email, password, name, surname, date_of_birth } =
+      await c.req.json();
 
     if (!email || !password) {
       throw new CustomError('Email and password are required', 400);
     }
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          role: 'Client', // Default role
+          name,
+          surname,
+          date_of_birth,
+        },
+      },
+    });
 
     if (error) {
       throw new CustomError(error.message, 400);
@@ -39,54 +51,37 @@ export const signUp = async (c: Context) => {
 
 export const login = async (c: Context) => {
   try {
-    const body = await c.req.json();
-    let data, error;
+    const { email, password } = await c.req.json();
 
-    if ('access_token' in body) {
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
-      if (sessionError) {
-        throw new CustomError(sessionError.message, 401);
-      }
-      data = sessionData;
-    } else if ('email' in body && 'password' in body) {
-      const { email, password } = body;
-      ({ data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      }));
-    } else {
-      throw new CustomError('Invalid login credentials', 400);
-    }
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     if (error) {
       throw new CustomError(error.message, 400);
     }
 
-    if (!data.session || !data.session.user) {
-      throw new CustomError('No session or user data found', 400);
+    if (!data.user) {
+      throw new CustomError('No user data found', 400);
     }
 
-    // Fetch user role from all_users table
-    const { data: userData, error: userError } = await supabase
-      .from('all_users')
-      .select('role')
-      .eq('user_id', data.session.user.id)
-      .single();
-
-    if (userError) {
-      throw new CustomError('Error fetching user role', 500);
-    }
-
-    // Create an extended session object
-    const extendedSession: ExtendedSession = {
-      ...data.session,
-      user_role: userData.role,
-    };
+    const userMetadata = data.user.user_metadata;
 
     return sendSuccessResponse(
       c,
-      { session: extendedSession },
+      {
+        session: data.session,
+        user: {
+          id: data.user.id,
+          email: data.user.email,
+          role: userMetadata.role,
+          name: userMetadata.name,
+          surname: userMetadata.surname,
+          date_of_birth: userMetadata.date_of_birth,
+          business_id: userMetadata.business_id,
+        },
+      },
       'Login successful'
     );
   } catch (error) {
@@ -119,24 +114,25 @@ export const confirmSignUp = async (c: Context) => {
       const role = type === 'invite' ? 'Staff' : 'Client';
       const email = data.user.email;
       const business_id =
-        role === 'Staff' ? data.user.user_metadata?.business_id : null;
+        type === 'invite' ? data.user.user_metadata?.business_id : null;
 
-      const userData = {
-        user_id: data.user.id,
-        email,
-        role,
-        business_id,
-        name,
-        surname,
-        date_of_birth,
-      };
+      // Update user metadata
+      const { error: updateError } = await supabase.auth.admin.updateUserById(
+        data.user.id,
+        {
+          user_metadata: {
+            ...data.user.user_metadata,
+            role,
+            name,
+            surname,
+            date_of_birth,
+            business_id,
+          },
+        }
+      );
 
-      const { error: insertError } = await supabase
-        .from('all_users')
-        .insert(userData);
-
-      if (insertError) {
-        throw new CustomError('Error inserting user data', 500);
+      if (updateError) {
+        throw new CustomError('Error updating user data', 500);
       }
     }
 

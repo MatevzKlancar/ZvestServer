@@ -6,26 +6,25 @@ import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 
 export const getQRCode = async (c: Context) => {
-  const user = c.get('user');
+  const authUser = c.get('user');
 
-  if (!user || !user.sub) {
+  if (!authUser || !authUser.id) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const userId = user.sub;
+  const userId = authUser.id;
 
   // Check user role
-  const { data: userData, error: userError } = await supabase
-    .from('all_users')
-    .select('role')
-    .eq('user_id', userId)
-    .single();
+  const { data: userData, error: userError } =
+    await supabase.auth.admin.getUserById(userId);
 
-  if (userError) {
+  if (userError || !userData || !userData.user) {
     return c.json({ error: 'Error fetching user data' }, 500);
   }
 
-  if (userData.role !== 'Client') {
+  const user = userData.user;
+
+  if (user.user_metadata?.role !== 'Client') {
     return c.json(
       { error: 'Access denied. Only clients can access QR codes.' },
       403
@@ -81,22 +80,25 @@ export const getQRCode = async (c: Context) => {
 
 export const handleQRCode = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
 
-    if (!user || !user.sub) {
+    if (!authUser || !authUser.id) {
       throw new CustomError('Not authenticated', 401);
     }
 
-    const staffUserId = user.sub;
+    const staffUserId = authUser.id;
 
     // Check if the user is a staff member
-    const { data: staffData, error: staffError } = await supabase
-      .from('all_users')
-      .select('user_id, business_id, role')
-      .eq('user_id', staffUserId)
-      .single();
+    const { data: userData, error: userError } =
+      await supabase.auth.admin.getUserById(staffUserId);
 
-    if (staffError || staffData.role !== 'Staff') {
+    if (userError || !userData || !userData.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const staffUser = userData.user;
+
+    if (staffUser.user_metadata?.role !== 'Staff') {
       throw new CustomError(
         'Access denied. Only staff members can scan QR codes.',
         403

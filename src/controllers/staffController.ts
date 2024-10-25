@@ -1,46 +1,213 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
+import CustomError from '../utils/customError';
+import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 
 export const getStaffActionHistory = async (c: Context) => {
-  const user = c.get('user');
+  try {
+    const authUser = c.get('user');
 
-  if (!user || !user.sub) {
-    return c.json({ error: 'Not authenticated' }, 401);
-  }
+    if (!authUser || !authUser.id) {
+      throw new CustomError('Not authenticated', 401);
+    }
 
-  const staffUserId = user.sub;
+    const staffUserId = authUser.id;
 
-  // Check if the user is a staff member
-  const { data: staffData, error: staffError } = await supabase
-    .from('all_users')
-    .select('user_id, business_id, role')
-    .eq('user_id', staffUserId)
-    .single();
+    // Check if the user is a staff member
+    const { data: userData, error: fetchUserError } =
+      await supabase.auth.admin.getUserById(staffUserId);
 
-  if (staffError || staffData.role !== 'Staff') {
-    return c.json(
-      {
-        error:
-          'Access denied. Only staff members can view their action history.',
-      },
-      403
+    if (fetchUserError || !userData || !userData.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const staffUser = userData.user;
+
+    const staffData = {
+      user_id: staffUser.id,
+      business_id: staffUser.user_metadata?.business_id,
+      role: staffUser.user_metadata?.role,
+    };
+
+    if (staffData.role !== 'Staff') {
+      throw new CustomError(
+        'Access denied. Only staff members can view their action history.',
+        403
+      );
+    }
+
+    // Fetch staff action history
+    const { data: actionHistory, error: historyError } = await supabase
+      .from('staff_actions')
+      .select('*')
+      .eq('staff_user_id', staffUserId)
+      .order('performed_at', { ascending: false });
+
+    if (historyError) {
+      console.error('Error fetching staff action history:', historyError);
+      throw new CustomError('Error fetching staff action history', 500);
+    }
+
+    return sendSuccessResponse(
+      c,
+      { data: actionHistory },
+      'Staff action history retrieved successfully'
     );
+  } catch (error) {
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
+};
 
-  // Fetch staff action history
-  const { data: actionHistory, error: historyError } = await supabase
-    .from('staff_actions')
-    .select('*')
-    .eq('staff_user_id', staffUserId)
-    .order('performed_at', { ascending: false });
+export const getStaffMembers = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
 
-  if (historyError) {
-    console.error('Error fetching staff action history:', historyError);
-    return c.json({ error: 'Error fetching staff action history' }, 500);
+    if (!authUser || !authUser.id) {
+      throw new CustomError('Not authenticated', 401);
+    }
+
+    const userId = authUser.id;
+
+    // Check if the user is an owner
+    const { data: userData, error: fetchUserError } =
+      await supabase.auth.admin.getUserById(userId);
+
+    if (fetchUserError || !userData || !userData.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const ownerUser = userData.user;
+
+    if (ownerUser.user_metadata?.role !== 'Owner') {
+      throw new CustomError(
+        'Access denied. Only owners can view staff members.',
+        403
+      );
+    }
+
+    const businessId = ownerUser.user_metadata?.business_id;
+
+    if (!businessId) {
+      throw new CustomError('Business ID not found for the owner', 500);
+    }
+
+    // Fetch staff members
+    const { data: staffMembers, error: staffError } =
+      await supabase.auth.admin.listUsers();
+
+    if (staffError) {
+      console.error('Error fetching staff members:', staffError);
+      throw new CustomError('Error fetching staff members', 500);
+    }
+
+    // Filter staff members for the specific business
+    const businessStaff = staffMembers.users
+      .filter(
+        (user) =>
+          user.user_metadata?.business_id === businessId &&
+          user.user_metadata?.role === 'Staff'
+      )
+      .map((user) => ({
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name,
+        surname: user.user_metadata?.surname,
+        created_at: user.created_at,
+      }));
+
+    return sendSuccessResponse(
+      c,
+      { data: businessStaff },
+      'Staff members retrieved successfully'
+    );
+  } catch (error) {
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
+};
 
-  return c.json({
-    message: 'Staff action history retrieved successfully',
-    data: actionHistory,
-  });
+export const removeStaffMember = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+    const { staffId } = await c.req.json();
+
+    if (!authUser || !authUser.id) {
+      throw new CustomError('Not authenticated', 401);
+    }
+
+    const ownerId = authUser.id;
+
+    // Check if the user is an owner
+    const { data: ownerData, error: ownerError } =
+      await supabase.auth.admin.getUserById(ownerId);
+
+    if (ownerError || !ownerData || !ownerData.user) {
+      throw new CustomError('Error fetching owner data', 500);
+    }
+
+    const ownerUser = ownerData.user;
+
+    if (ownerUser.user_metadata?.role !== 'Owner') {
+      throw new CustomError(
+        'Access denied. Only owners can remove staff members.',
+        403
+      );
+    }
+
+    const businessId = ownerUser.user_metadata?.business_id;
+
+    if (!businessId) {
+      throw new CustomError('Business ID not found for the owner', 500);
+    }
+
+    // Check if the staff member belongs to the owner's business
+    const { data: staffData, error: staffError } =
+      await supabase.auth.admin.getUserById(staffId);
+
+    if (staffError || !staffData || !staffData.user) {
+      throw new CustomError('Error fetching staff data', 500);
+    }
+
+    const staffUser = staffData.user;
+
+    if (
+      staffUser.user_metadata?.business_id !== businessId ||
+      staffUser.user_metadata?.role !== 'Staff'
+    ) {
+      throw new CustomError(
+        'Invalid staff member or not associated with your business',
+        400
+      );
+    }
+
+    // Remove the staff member's association with the business
+    const { error: updateError } = await supabase.auth.admin.updateUserById(
+      staffId,
+      {
+        user_metadata: {
+          business_id: null,
+          role: null,
+        },
+      }
+    );
+
+    if (updateError) {
+      throw new CustomError('Error removing staff member', 500);
+    }
+
+    return sendSuccessResponse(c, {}, 'Staff member removed successfully');
+  } catch (error) {
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
 };

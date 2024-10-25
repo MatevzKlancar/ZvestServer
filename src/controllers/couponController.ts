@@ -13,21 +13,23 @@ const handleError = (c: Context, error: any, statusCode: number = 500) => {
 
 export const createCoupon = async (c: Context) => {
   try {
-    const user = c.get('user');
-    if (!user || !user.sub) {
+    const authUser = c.get('user');
+    if (!authUser || !authUser.id) {
       return c.json({ error: 'Not authenticated' }, 401);
     }
 
-    const ownerId = user.sub;
+    const ownerId = authUser.id;
 
-    const { data: ownerData, error: ownerError } = await supabase
-      .from('all_users')
-      .select('user_id, business_id, role')
-      .eq('user_id', ownerId)
-      .single();
+    const { data: userData, error: userError } =
+      await supabase.auth.admin.getUserById(ownerId);
 
-    if (ownerError) throw ownerError;
-    if (ownerData.role !== 'Owner') {
+    if (userError || !userData || !userData.user) {
+      throw new Error('Error fetching user data');
+    }
+
+    const ownerUser = userData.user;
+
+    if (ownerUser.user_metadata?.role !== 'Owner') {
       return c.json(
         { error: 'Access denied. Only owners can create coupons.' },
         403
@@ -54,7 +56,7 @@ export const createCoupon = async (c: Context) => {
     const { data: coupon, error: couponError } = await supabase
       .from('coupons')
       .insert({
-        business_id: ownerData.business_id,
+        business_id: ownerUser.user_metadata?.business_id,
         name,
         description,
         points_required: pointsRequired,
@@ -71,14 +73,14 @@ export const createCoupon = async (c: Context) => {
 };
 
 export const redeemCoupon = async (c: Context) => {
-  const user = c.get('user');
+  const authUser = c.get('user');
   const { couponId } = await c.req.json();
 
-  if (!user || !user.sub) {
+  if (!authUser || !authUser.id) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const userId = user.sub;
+  const userId = authUser.id;
 
   if (!couponId) {
     return c.json({ error: 'Coupon ID is required' }, 400);
@@ -141,23 +143,26 @@ export const redeemCoupon = async (c: Context) => {
 };
 
 export const verifyCoupon = async (c: Context) => {
-  const user = c.get('user');
+  const authUser = c.get('user');
   const { qrCodeData } = await c.req.json();
 
-  if (!user || !user.sub) {
+  if (!authUser || !authUser.id) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const staffUserId = user.sub;
+  const staffUserId = authUser.id;
 
   // Check if the user is a staff member
-  const { data: staffData, error: staffError } = await supabase
-    .from('all_users')
-    .select('user_id, business_id, role')
-    .eq('user_id', staffUserId)
-    .single();
+  const { data: userData, error: userError } =
+    await supabase.auth.admin.getUserById(staffUserId);
 
-  if (staffError || staffData.role !== 'Staff') {
+  if (userError || !userData || !userData.user) {
+    return c.json({ error: 'Error fetching user data' }, 500);
+  }
+
+  const staffUser = userData.user;
+
+  if (staffUser.user_metadata?.role !== 'Staff') {
     return c.json(
       { error: 'Access denied. Only staff members can verify coupons.' },
       403
@@ -193,7 +198,7 @@ export const verifyCoupon = async (c: Context) => {
     .from('redeemed_coupons')
     .select('*, coupons(*)')
     .eq('id', redeemedCouponId)
-    .eq('business_id', staffData.business_id)
+    .eq('business_id', staffUser.user_metadata?.business_id)
     .single();
 
   if (verifyError) {
@@ -220,7 +225,7 @@ export const verifyCoupon = async (c: Context) => {
     .from('loyalty_points')
     .select('points')
     .eq('user_id', redeemedCoupon.user_id)
-    .eq('business_id', staffData.business_id)
+    .eq('business_id', staffUser.user_metadata?.business_id)
     .single();
 
   if (pointsError) {
@@ -241,7 +246,7 @@ export const verifyCoupon = async (c: Context) => {
     .from('loyalty_points')
     .update({ points: newPoints })
     .eq('user_id', redeemedCoupon.user_id)
-    .eq('business_id', staffData.business_id);
+    .eq('business_id', staffUser.user_metadata?.business_id);
 
   if (updatePointsError) {
     console.error('Error updating points:', updatePointsError);
@@ -271,7 +276,7 @@ export const verifyCoupon = async (c: Context) => {
       coupon_name: redeemedCoupon.coupons.name,
       points_deducted: requiredPoints,
     },
-    business_id: staffData.business_id,
+    business_id: staffUser.user_metadata?.business_id,
   });
 
   return c.json({
@@ -283,22 +288,25 @@ export const verifyCoupon = async (c: Context) => {
 };
 
 export const getOwnerCoupons = async (c: Context) => {
-  const user = c.get('user');
+  const authUser = c.get('user');
 
-  if (!user || !user.sub) {
+  if (!authUser || !authUser.id) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const ownerId = user.sub;
+  const ownerId = authUser.id;
 
   // Check if the user is an owner and get business info
-  const { data: ownerData, error: ownerError } = await supabase
-    .from('all_users')
-    .select('user_id, business_id, role')
-    .eq('user_id', ownerId)
-    .single();
+  const { data: userData, error: userError } =
+    await supabase.auth.admin.getUserById(ownerId);
 
-  if (ownerError || ownerData.role !== 'Owner') {
+  if (userError || !userData || !userData.user) {
+    return c.json({ error: 'Error fetching user data' }, 500);
+  }
+
+  const ownerUser = userData.user;
+
+  if (ownerUser.user_metadata?.role !== 'Owner') {
     return c.json(
       { error: 'Access denied. Only owners can view their coupons.' },
       403
@@ -309,7 +317,7 @@ export const getOwnerCoupons = async (c: Context) => {
   const { data: coupons, error: couponsError } = await supabase
     .from('coupons')
     .select('*')
-    .eq('business_id', ownerData.business_id);
+    .eq('business_id', ownerUser.user_metadata?.business_id);
 
   if (couponsError) {
     console.error('Error fetching coupons:', couponsError);
@@ -324,23 +332,25 @@ export const getOwnerCoupons = async (c: Context) => {
 
 export const deleteCoupon = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
     const couponId = c.req.param('couponId');
 
-    if (!user || !user.sub) {
+    if (!authUser || !authUser.id) {
       return c.json({ error: 'Not authenticated' }, 401);
     }
 
-    const ownerId = user.sub;
+    const ownerId = authUser.id;
 
-    const { data: ownerData, error: ownerError } = await supabase
-      .from('all_users')
-      .select('user_id, business_id, role')
-      .eq('user_id', ownerId)
-      .single();
+    const { data: userData, error: userError } =
+      await supabase.auth.admin.getUserById(ownerId);
 
-    if (ownerError) throw ownerError;
-    if (ownerData.role !== 'Owner') {
+    if (userError || !userData || !userData.user) {
+      throw new Error('Error fetching user data');
+    }
+
+    const ownerUser = userData.user;
+
+    if (ownerUser.user_metadata?.role !== 'Owner') {
       return c.json(
         { error: 'Access denied. Only owners can deactivate coupons.' },
         403
@@ -358,7 +368,7 @@ export const deleteCoupon = async (c: Context) => {
       .from('coupons')
       .select('*')
       .eq('id', couponId)
-      .eq('business_id', ownerData.business_id)
+      .eq('business_id', ownerUser.user_metadata?.business_id)
       .single();
 
     if (couponError) throw couponError;

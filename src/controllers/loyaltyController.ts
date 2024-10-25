@@ -4,26 +4,35 @@ import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 
 export const awardLoyaltyPoints = async (c: Context) => {
-  const user = c.get('user');
+  const authUser = c.get('user');
   const { qrCodeData, amount } = await c.req.json();
 
   console.log('Received Loyalty QR Code Data:', qrCodeData);
   console.log('Received Loyalty Points Amount:', amount);
 
-  if (!user || !user.sub) {
+  if (!authUser || !authUser.id) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const staffUserId = user.sub;
+  const staffUserId = authUser.id;
 
   // Check if the user is a staff member and get business info
-  const { data: staffData, error: staffError } = await supabase
-    .from('all_users')
-    .select('user_id, business_id, role')
-    .eq('user_id', staffUserId)
-    .single();
+  const { data: userData, error: fetchUserError } =
+    await supabase.auth.admin.getUserById(staffUserId);
 
-  if (staffError || staffData.role !== 'Staff') {
+  if (fetchUserError || !userData || !userData.user) {
+    return c.json({ error: 'Error fetching user data' }, 500);
+  }
+
+  const staffUser = userData.user;
+
+  const staffData = {
+    user_id: staffUser.id,
+    business_id: staffUser.user_metadata?.business_id,
+    role: staffUser.user_metadata?.role,
+  };
+
+  if (staffData.role !== 'Staff') {
     return c.json(
       { error: 'Access denied. Only staff members can award points.' },
       403
@@ -41,14 +50,11 @@ export const awardLoyaltyPoints = async (c: Context) => {
   const userId = qrCodeData.split('-').slice(0, 5).join('-');
 
   // Verify if the user exists
-  const { data: userData, error: userError } = await supabase
-    .from('all_users')
-    .select('user_id')
-    .eq('user_id', userId)
-    .single();
+  const { data: customerData, error: customerError } =
+    await supabase.auth.admin.getUserById(userId);
 
-  if (userError || !userData) {
-    console.error('Error fetching user data:', userError);
+  if (customerError || !customerData || !customerData.user) {
+    console.error('Error fetching user data:', customerError);
     return c.json({ error: 'Invalid or non-existent user.' }, 400);
   }
 
@@ -85,25 +91,31 @@ export const awardLoyaltyPoints = async (c: Context) => {
 
 export const getLoyaltyPointsInfo = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
 
-    if (!user || !user.sub) {
+    if (!authUser || !authUser.id) {
       throw new CustomError('Not authenticated', 401);
     }
 
-    const staffUserId = user.sub;
+    const staffUserId = authUser.id;
 
     // Check if the user is a staff member or owner and get business info
-    const { data: staffData, error: staffError } = await supabase
-      .from('all_users')
-      .select('user_id, business_id, role')
-      .eq('user_id', staffUserId)
-      .single();
+    const { data: userData, error: fetchUserError } =
+      await supabase.auth.admin.getUserById(staffUserId);
 
-    if (
-      staffError ||
-      (staffData.role !== 'Staff' && staffData.role !== 'Owner')
-    ) {
+    if (fetchUserError || !userData || !userData.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const staffUser = userData.user;
+
+    const staffData = {
+      user_id: staffUser.id,
+      business_id: staffUser.user_metadata?.business_id,
+      role: staffUser.user_metadata?.role,
+    };
+
+    if (staffData.role !== 'Staff' && staffData.role !== 'Owner') {
       throw new CustomError(
         'Access denied. Only staff members or owners can view loyalty points information.',
         403
@@ -116,20 +128,12 @@ export const getLoyaltyPointsInfo = async (c: Context) => {
         .from('loyalty_points')
         .select(
           `
-        id,
-        user_id,
-        points,
-        awarded_by,
-        awarded_at,
-        customer:all_users!loyalty_points_user_id_fkey (
-          email,
-          role
-        ),
-        staff:all_users!loyalty_points_awarded_by_fkey (
-          email,
-          role
-        )
-      `
+          id,
+          user_id,
+          points,
+          awarded_by,
+          awarded_at
+        `
         )
         .eq('business_id', staffData.business_id)
         .order('awarded_at', { ascending: false });
@@ -138,9 +142,37 @@ export const getLoyaltyPointsInfo = async (c: Context) => {
       throw new CustomError('Error fetching loyalty points data', 500);
     }
 
+    // Fetch user details for each loyalty point entry
+    const loyaltyPointsWithUserDetails = await Promise.all(
+      loyaltyPointsData.map(async (point) => {
+        const { data: customerData } = await supabase.auth.admin.getUserById(
+          point.user_id
+        );
+        const { data: staffData } = await supabase.auth.admin.getUserById(
+          point.awarded_by
+        );
+
+        return {
+          ...point,
+          customer: customerData?.user
+            ? {
+                email: customerData.user.email,
+                role: customerData.user.user_metadata?.role,
+              }
+            : null,
+          staff: staffData?.user
+            ? {
+                email: staffData.user.email,
+                role: staffData.user.user_metadata?.role,
+              }
+            : null,
+        };
+      })
+    );
+
     return sendSuccessResponse(
       c,
-      { data: loyaltyPointsData },
+      { data: loyaltyPointsWithUserDetails },
       'Loyalty points information retrieved successfully'
     );
   } catch (error) {
@@ -153,14 +185,14 @@ export const getLoyaltyPointsInfo = async (c: Context) => {
 };
 
 export const getUserLoyaltyPoints = async (c: Context) => {
-  const user = c.get('user');
+  const authUser = c.get('user');
   const businessId = c.req.query('business_id');
 
-  if (!user || !user.sub) {
+  if (!authUser || !authUser.id) {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const userId = user.sub;
+  const userId = authUser.id;
 
   let query = supabase
     .from('user_loyalty_points')
@@ -197,5 +229,6 @@ export const getUserLoyaltyPoints = async (c: Context) => {
   return c.json({
     message: 'User loyalty points retrieved successfully',
     data: userPoints,
+    user_id: userId,
   });
 };

@@ -1,36 +1,38 @@
 import { Context, Next } from 'hono';
-import { jwtVerify } from 'jose';
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+import { supabase } from '../config/supabase';
 
 export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('Missing or invalid Authorization header');
     return c.json({ error: 'Missing or invalid Authorization header' }, 401);
   }
 
   const token = authHeader.split(' ')[1];
 
   try {
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(JWT_SECRET),
-      {
-        issuer: `${SUPABASE_URL}/auth/v1`,
-      }
-    );
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
 
-    c.set('user', payload);
+    if (error || !user) {
+      return c.json({ error: 'Invalid token' }, 401);
+    }
+
+    c.set('user', {
+      id: user.id,
+      email: user.email,
+      role: user.user_metadata.role,
+      name: user.user_metadata.name,
+      surname: user.user_metadata.surname,
+      date_of_birth: user.user_metadata.date_of_birth,
+      business_id: user.user_metadata.business_id,
+    });
+
     await next();
   } catch (error) {
     console.error('Token verification failed:', error);
-    if (error instanceof Error) {
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-    }
     return c.json({ error: 'Invalid token' }, 401);
   }
 }

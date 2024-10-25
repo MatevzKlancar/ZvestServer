@@ -1,26 +1,35 @@
 import { Context } from 'hono';
-import { supabase } from '../config/supabase';
+import { supabaseAdmin } from '../config/supabaseAdmin';
 import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 
 export const createBusiness = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
 
-    if (!user || !user.sub) {
+    if (!authUser || !authUser.id) {
       throw new CustomError('Not authenticated', 401);
     }
 
-    const ownerId = user.sub;
+    const ownerId = authUser.id;
 
     // Check if the user is an owner
-    const { data: ownerData, error: ownerError } = await supabase
-      .from('all_users')
-      .select('user_id, role, business_id')
-      .eq('user_id', ownerId)
-      .single();
+    const { data: userData, error: fetchUserError } =
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
-    if (ownerError || ownerData.role !== 'Owner') {
+    if (fetchUserError || !userData || !userData.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const ownerUser = userData.user;
+
+    const ownerData = {
+      user_id: ownerUser.id,
+      role: ownerUser.user_metadata?.role,
+      business_id: ownerUser.user_metadata?.business_id,
+    };
+
+    if (ownerData.role !== 'Owner') {
       throw new CustomError(
         'Access denied. Only owners can create businesses.',
         403
@@ -77,7 +86,7 @@ export const createBusiness = async (c: Context) => {
       }
     }
 
-    const { data: business, error: insertError } = await supabase
+    const { data: business, error: insertError } = await supabaseAdmin
       .from('businesses')
       .insert({
         name: businessData.name,
@@ -101,11 +110,14 @@ export const createBusiness = async (c: Context) => {
       throw new CustomError('Error creating business', 500);
     }
 
-    // Update the owner's business_id in the all_users table
-    const { error: updateError } = await supabase
-      .from('all_users')
-      .update({ business_id: business.id })
-      .eq('user_id', ownerId);
+    // Update the owner's user metadata with the new business ID
+    const { error: updateError } =
+      await supabaseAdmin.auth.admin.updateUserById(ownerId, {
+        user_metadata: {
+          ...ownerUser.user_metadata,
+          business_id: business.id,
+        },
+      });
 
     if (updateError) {
       throw new CustomError('Error updating owner information', 500);
@@ -128,22 +140,31 @@ export const createBusiness = async (c: Context) => {
 
 export const updateBusiness = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
 
-    if (!user || !user.sub) {
+    if (!authUser || !authUser.id) {
       return c.json({ error: 'Not authenticated' }, 401);
     }
 
-    const ownerId = user.sub;
+    const ownerId = authUser.id;
 
     // Check if the user is an owner and get their business
-    const { data: ownerData, error: ownerError } = await supabase
-      .from('all_users')
-      .select('user_id, role, business_id')
-      .eq('user_id', ownerId)
-      .single();
+    const { data: userData, error: fetchUserError } =
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
-    if (ownerError || ownerData.role !== 'Owner' || !ownerData.business_id) {
+    if (fetchUserError || !userData || !userData.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const ownerUser = userData.user;
+
+    const ownerData = {
+      user_id: ownerUser.id,
+      role: ownerUser.user_metadata?.role,
+      business_id: ownerUser.user_metadata?.business_id,
+    };
+
+    if (ownerData.role !== 'Owner' || !ownerData.business_id) {
       return c.json(
         { error: 'Access denied. Only owners with a business can update it.' },
         403
@@ -212,7 +233,7 @@ export const updateBusiness = async (c: Context) => {
 
     // Only proceed with the update if there are fields to update
     if (Object.keys(updateData).length > 0) {
-      const { data: updatedBusiness, error: updateError } = await supabase
+      const { data: updatedBusiness, error: updateError } = await supabaseAdmin
         .from('businesses')
         .update(updateData)
         .eq('id', ownerData.business_id)
@@ -242,22 +263,31 @@ export const updateBusiness = async (c: Context) => {
 
 export const deleteBusiness = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
 
-    if (!user || !user.sub) {
+    if (!authUser || !authUser.id) {
       return c.json({ error: 'Not authenticated' }, 401);
     }
 
-    const ownerId = user.sub;
+    const ownerId = authUser.id;
 
     // Check if the user is an owner and get their business
-    const { data: ownerData, error: ownerError } = await supabase
-      .from('all_users')
-      .select('user_id, role, business_id')
-      .eq('user_id', ownerId)
-      .single();
+    const { data, error: userError } =
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
-    if (ownerError || ownerData.role !== 'Owner' || !ownerData.business_id) {
+    if (userError || !data || !data.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const ownerUser = data.user;
+
+    const ownerData = {
+      user_id: ownerUser.id,
+      role: ownerUser.user_metadata?.role,
+      business_id: ownerUser.user_metadata?.business_id,
+    };
+
+    if (ownerData.role !== 'Owner' || !ownerData.business_id) {
       return c.json(
         { error: 'Access denied. Only owners with a business can delete it.' },
         403
@@ -265,18 +295,32 @@ export const deleteBusiness = async (c: Context) => {
     }
 
     try {
-      // Update all users associated with this business
-      const { error: updateUsersError } = await supabase
-        .from('all_users')
-        .update({ business_id: null })
-        .eq('business_id', ownerData.business_id);
+      // Start a Supabase transaction
+      const { error: beginError } =
+        await supabaseAdmin.rpc('begin_transaction');
+      if (beginError) throw beginError;
 
-      if (updateUsersError) {
-        throw updateUsersError;
+      // Update all users associated with this business
+      const { data: usersToUpdate, error: fetchUsersError } =
+        await supabaseAdmin.auth.admin.listUsers();
+      if (fetchUsersError) throw fetchUsersError;
+
+      for (const user of usersToUpdate.users) {
+        if (user.user_metadata?.business_id === ownerData.business_id) {
+          const { error: updateUserError } =
+            await supabaseAdmin.auth.admin.updateUserById(user.id, {
+              user_metadata: {
+                ...user.user_metadata,
+                business_id: null,
+                role: user.id === ownerId ? 'Owner' : null, // Keep the owner role for the owner
+              },
+            });
+          if (updateUserError) throw updateUserError;
+        }
       }
 
       // Delete the business
-      const { error: deleteBusinessError } = await supabase
+      const { error: deleteBusinessError } = await supabaseAdmin
         .from('businesses')
         .delete()
         .eq('id', ownerData.business_id);
@@ -286,7 +330,8 @@ export const deleteBusiness = async (c: Context) => {
       }
 
       // Commit the transaction
-      const { error: commitError } = await supabase.rpc('commit_transaction');
+      const { error: commitError } =
+        await supabaseAdmin.rpc('commit_transaction');
       if (commitError) {
         throw commitError;
       }
@@ -295,7 +340,7 @@ export const deleteBusiness = async (c: Context) => {
         message: 'Business deleted successfully',
       });
     } catch (transactionError) {
-      const { error: rollbackError } = await supabase.rpc(
+      const { error: rollbackError } = await supabaseAdmin.rpc(
         'rollback_transaction'
       );
       if (rollbackError) {
@@ -312,34 +357,44 @@ export const deleteBusiness = async (c: Context) => {
 
 export const getBusiness = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
 
-    if (!user || !user.sub) {
-      return c.json({ error: 'Not authenticated' }, 401);
+    if (!authUser || !authUser.id) {
+      return sendErrorResponse(c, 'Not authenticated', 401);
     }
 
-    const ownerId = user.sub;
+    const ownerId = authUser.id;
 
     // Check if the user is an owner and get their business
-    const { data: ownerData, error: ownerError } = await supabase
-      .from('all_users')
-      .select('user_id, role, business_id')
-      .eq('user_id', ownerId)
-      .single();
+    const { data, error: userError } =
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
-    if (ownerError || ownerData.role !== 'Owner') {
-      return c.json(
-        { error: 'Access denied. Only owners can view their business data.' },
+    if (userError || !data || !data.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const ownerUser = data.user;
+
+    const ownerData = {
+      user_id: ownerUser.id,
+      role: ownerUser.user_metadata?.role,
+      business_id: ownerUser.user_metadata?.business_id,
+    };
+
+    if (ownerData.role !== 'Owner') {
+      return sendErrorResponse(
+        c,
+        'Access denied. Only owners can view their business data.',
         403
       );
     }
 
     if (!ownerData.business_id) {
-      return c.json({ error: 'You have not created a business yet.' }, 404);
+      return sendErrorResponse(c, 'You have not created a business yet.', 404);
     }
 
     // Fetch the business data
-    const { data: business, error: businessError } = await supabase
+    const { data: business, error: businessError } = await supabaseAdmin
       .from('businesses')
       .select('*')
       .eq('id', ownerData.business_id)
@@ -347,16 +402,20 @@ export const getBusiness = async (c: Context) => {
 
     if (businessError) {
       console.error('Error fetching business data:', businessError);
-      return c.json({ error: 'Error fetching business data' }, 500);
+      return sendErrorResponse(c, 'Error fetching business data', 500);
     }
 
-    return c.json({
-      message: 'Business data retrieved successfully',
-      business,
-    });
+    return sendSuccessResponse(
+      c,
+      { business },
+      'Business data retrieved successfully'
+    );
   } catch (error) {
     console.error('Unexpected error:', error);
-    return c.json({ error: 'An unexpected error occurred' }, 500);
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };
 
@@ -373,7 +432,7 @@ async function uploadImage(
   const arrayBuffer = await file.arrayBuffer();
   const uint8Array = new Uint8Array(arrayBuffer);
 
-  const { data: uploadData, error: uploadError } = await supabase.storage
+  const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
     .from(bucket)
     .upload(fileName, uint8Array, {
       contentType: file.type,
@@ -385,7 +444,7 @@ async function uploadImage(
     return null;
   }
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
+  const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(fileName);
 
   return data.publicUrl;
 }
@@ -402,7 +461,7 @@ export const getAllOrSpecificBusiness = async (c: Context) => {
 
     const businessId = c.req.param('businessId');
 
-    let query = supabase.from('businesses').select('*');
+    let query = supabaseAdmin.from('businesses').select('*');
 
     if (businessId) {
       query = query.eq('id', businessId);
@@ -441,7 +500,7 @@ export const getUserBusinessesWithPoints = async (c: Context) => {
 
     const userId = user.sub;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('user_loyalty_points')
       .select(
         `

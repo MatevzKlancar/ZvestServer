@@ -16,11 +16,13 @@ businessRouter.use('*', authMiddleware);
 businessRouter.post('create', businessController.createBusiness);
 businessRouter.put('update', businessController.updateBusiness);
 businessRouter.delete('delete', businessController.deleteBusiness);
-businessRouter.get('get', businessController.getBusiness);
+businessRouter.get('', businessController.getBusiness);
 
 businessRouter.get(
   'user-businesses-with-points',
   businessController.getUserBusinessesWithPoints
 );
+
+businessRouter.get('test', (c) => c.text('Business router is working'));
 
 export default businessRouter;
