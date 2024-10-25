@@ -4,7 +4,17 @@ import { authMiddleware } from '../middleware/authMiddleware';
 
 const invitationRouter = new Hono();
 
-invitationRouter.use('*', authMiddleware);
-invitationRouter.post('/create', invitationController.createInvitation);
+// Apply authMiddleware only to the '/create' route
+invitationRouter.post(
+  '/create',
+  authMiddleware,
+  invitationController.createInvitation
+);
+
+// No authMiddleware for this route
+invitationRouter.post(
+  '/confirm-and-set-password',
+  invitationController.confirmAndSetPassword
+);
 
 export default invitationRouter;
