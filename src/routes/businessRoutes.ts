@@ -4,15 +4,20 @@ import { authMiddleware } from '../middleware/authMiddleware';
 
 const businessRouter = new Hono();
 
-businessRouter.use('*', authMiddleware);
-businessRouter.post('create', businessController.createBusiness);
-businessRouter.put('update', businessController.updateBusiness);
-businessRouter.delete('delete', businessController.deleteBusiness);
-businessRouter.get('get', businessController.getBusiness);
+// Move this route before authMiddleware
 businessRouter.get(
   'all/:businessId?',
   businessController.getAllOrSpecificBusiness
 );
+
+// Apply authMiddleware to all other routes
+businessRouter.use('*', authMiddleware);
+
+businessRouter.post('create', businessController.createBusiness);
+businessRouter.put('update', businessController.updateBusiness);
+businessRouter.delete('delete', businessController.deleteBusiness);
+businessRouter.get('get', businessController.getBusiness);
+
 businessRouter.get(
   'user-businesses-with-points',
   businessController.getUserBusinessesWithPoints
