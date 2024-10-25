@@ -538,3 +538,44 @@ export const getUserBusinessesWithPoints = async (c: Context) => {
     return c.json({ error: 'An unexpected error occurred' }, 500);
   }
 };
+
+export const getPublicBusinessData = async (c: Context) => {
+  try {
+    const businessId = c.req.param('businessId');
+
+    let query = supabaseAdmin
+      .from('businesses')
+      .select(
+        'id, name, description, image_url, background_image_url, location, opening_time, phone_number, website'
+      );
+
+    if (businessId) {
+      query = query.eq('id', businessId);
+    } else {
+      // Limit the number of businesses returned if no specific ID is provided
+      query = query.limit(10);
+    }
+
+    const { data: businesses, error } = await query;
+
+    if (error) {
+      console.error('Error fetching public business data:', error);
+      return sendErrorResponse(c, 'Error fetching public business data', 500);
+    }
+
+    if (businessId && businesses.length === 0) {
+      return sendErrorResponse(c, 'Business not found', 404);
+    }
+
+    return sendSuccessResponse(
+      c,
+      { businesses: businessId ? businesses[0] : businesses },
+      businessId
+        ? 'Public business data retrieved successfully'
+        : 'Public businesses data retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
+};

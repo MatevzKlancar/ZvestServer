@@ -7,6 +7,7 @@ import { errorHandler } from './utils/errorHandler';
 import dashboardRouter from './routes/dashboardRoutes';
 import clientRouter from './routes/clientRoutes';
 import authRouter from './routes/authRoutes';
+import { getPublicBusinessData } from './controllers/businessController';
 
 const app = new Hono();
 
@@ -36,6 +37,9 @@ app.route('/dashboard', dashboardRouter);
 app.route('/client', clientRouter);
 
 app.route('/auth', authRouter);
+
+app.get('/public/businesses', getPublicBusinessData);
+app.get('/public/businesses/:businessId', getPublicBusinessData);
 
 // Error handling
 app.onError(errorHandler);
