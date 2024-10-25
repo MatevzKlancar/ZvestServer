@@ -16,7 +16,7 @@ export const createInvitation = async (c: Context) => {
     const ownerId = authUser.id;
 
     const { data, error: userError } =
-      await supabase.auth.admin.getUserById(ownerId);
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
     if (userError || !data || !data.user) {
       throw new CustomError('Error fetching user data', 500);
@@ -40,7 +40,7 @@ export const createInvitation = async (c: Context) => {
 
     // Check if the email is already registered as staff for this business
     const { data: existingUsers, error: usersError } =
-      await supabase.auth.admin.listUsers();
+      await supabaseAdmin.auth.admin.listUsers();
 
     if (usersError) {
       throw new CustomError('Error checking existing users', 500);

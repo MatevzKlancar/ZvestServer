@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import { supabase } from '../config/supabase';
 import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
+import { supabaseAdmin } from '../config/supabaseAdmin';
 
 export const awardLoyaltyPoints = async (c: Context) => {
   const authUser = c.get('user');
@@ -18,7 +19,7 @@ export const awardLoyaltyPoints = async (c: Context) => {
 
   // Check if the user is a staff member and get business info
   const { data: userData, error: fetchUserError } =
-    await supabase.auth.admin.getUserById(staffUserId);
+    await supabaseAdmin.auth.admin.getUserById(staffUserId);
 
   if (fetchUserError || !userData || !userData.user) {
     return c.json({ error: 'Error fetching user data' }, 500);
@@ -51,7 +52,7 @@ export const awardLoyaltyPoints = async (c: Context) => {
 
   // Verify if the user exists
   const { data: customerData, error: customerError } =
-    await supabase.auth.admin.getUserById(userId);
+    await supabaseAdmin.auth.admin.getUserById(userId);
 
   if (customerError || !customerData || !customerData.user) {
     console.error('Error fetching user data:', customerError);
@@ -101,7 +102,7 @@ export const getLoyaltyPointsInfo = async (c: Context) => {
 
     // Check if the user is a staff member or owner and get business info
     const { data: userData, error: fetchUserError } =
-      await supabase.auth.admin.getUserById(staffUserId);
+      await supabaseAdmin.auth.admin.getUserById(staffUserId);
 
     if (fetchUserError || !userData || !userData.user) {
       throw new CustomError('Error fetching user data', 500);
