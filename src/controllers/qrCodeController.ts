@@ -4,6 +4,7 @@ import { awardLoyaltyPoints } from './loyaltyController';
 import { verifyCoupon } from './couponController';
 import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
+import { supabaseAdmin } from '../config/supabaseAdmin';
 
 export const getQRCode = async (c: Context) => {
   const authUser = c.get('user');
@@ -16,7 +17,7 @@ export const getQRCode = async (c: Context) => {
 
   // Check user role
   const { data: userData, error: userError } =
-    await supabase.auth.admin.getUserById(userId);
+    await supabaseAdmin.auth.admin.getUserById(userId);
 
   if (userError || !userData || !userData.user) {
     return c.json({ error: 'Error fetching user data' }, 500);
@@ -90,7 +91,7 @@ export const handleQRCode = async (c: Context) => {
 
     // Check if the user is a staff member
     const { data: userData, error: userError } =
-      await supabase.auth.admin.getUserById(staffUserId);
+      await supabaseAdmin.auth.admin.getUserById(staffUserId);
 
     if (userError || !userData || !userData.user) {
       throw new CustomError('Error fetching user data', 500);

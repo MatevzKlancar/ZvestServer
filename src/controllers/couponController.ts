@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import { supabase } from '../config/supabase';
 import { generateQRCode } from '../utils/qrCodeGenerator';
 import { StatusCode } from 'hono/utils/http-status';
+import { supabaseAdmin } from '../config/supabaseAdmin';
 
 const handleError = (c: Context, error: any, statusCode: number = 500) => {
   console.error('Error:', error);
@@ -21,7 +22,7 @@ export const createCoupon = async (c: Context) => {
     const ownerId = authUser.id;
 
     const { data: userData, error: userError } =
-      await supabase.auth.admin.getUserById(ownerId);
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
     if (userError || !userData || !userData.user) {
       throw new Error('Error fetching user data');
@@ -154,7 +155,7 @@ export const verifyCoupon = async (c: Context) => {
 
   // Check if the user is a staff member
   const { data: userData, error: userError } =
-    await supabase.auth.admin.getUserById(staffUserId);
+    await supabaseAdmin.auth.admin.getUserById(staffUserId);
 
   if (userError || !userData || !userData.user) {
     return c.json({ error: 'Error fetching user data' }, 500);
@@ -298,7 +299,7 @@ export const getOwnerCoupons = async (c: Context) => {
 
   // Check if the user is an owner and get business info
   const { data: userData, error: userError } =
-    await supabase.auth.admin.getUserById(ownerId);
+    await supabaseAdmin.auth.admin.getUserById(ownerId);
 
   if (userError || !userData || !userData.user) {
     return c.json({ error: 'Error fetching user data' }, 500);
@@ -342,7 +343,7 @@ export const deleteCoupon = async (c: Context) => {
     const ownerId = authUser.id;
 
     const { data: userData, error: userError } =
-      await supabase.auth.admin.getUserById(ownerId);
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
     if (userError || !userData || !userData.user) {
       throw new Error('Error fetching user data');

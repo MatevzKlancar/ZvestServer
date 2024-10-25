@@ -1,20 +1,19 @@
 import { Hono } from 'hono';
+import businessRouter from './businessRoutes';
+import loyaltyRouter from './loyaltyRoutes';
+import staffRouter from './staffRoutes';
 import { handleQRCode } from '../controllers/qrCodeController';
 import { authMiddleware } from '../middleware/authMiddleware';
 import invitationRouter from './invitationRouter';
-import businessRouter from './businessRoutes';
 
 const dashboardRouter = new Hono();
 
-// Apply businessRouter
+dashboardRouter.use('*', authMiddleware);
+
 dashboardRouter.route('/business', businessRouter);
-
-// Other routes
-dashboardRouter.use('/loyalty/*', authMiddleware);
-dashboardRouter.use('/staff/*', authMiddleware);
-dashboardRouter.post('/scan', authMiddleware, handleQRCode);
-
-// Apply invitationRouter without authMiddleware
+dashboardRouter.route('/loyalty', loyaltyRouter);
+dashboardRouter.route('/staff', staffRouter);
+dashboardRouter.post('/scan', handleQRCode);
 dashboardRouter.route('/invitations', invitationRouter);
 
 export default dashboardRouter;

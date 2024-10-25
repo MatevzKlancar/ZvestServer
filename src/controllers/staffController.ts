@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import { supabase } from '../config/supabase';
 import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
+import { supabaseAdmin } from '../config/supabaseAdmin';
 
 export const getStaffActionHistory = async (c: Context) => {
   try {
@@ -15,7 +16,7 @@ export const getStaffActionHistory = async (c: Context) => {
 
     // Check if the user is a staff member
     const { data: userData, error: fetchUserError } =
-      await supabase.auth.admin.getUserById(staffUserId);
+      await supabaseAdmin.auth.admin.getUserById(staffUserId);
 
     if (fetchUserError || !userData || !userData.user) {
       throw new CustomError('Error fetching user data', 500);
@@ -74,7 +75,7 @@ export const getStaffMembers = async (c: Context) => {
 
     // Check if the user is an owner
     const { data: userData, error: fetchUserError } =
-      await supabase.auth.admin.getUserById(userId);
+      await supabaseAdmin.auth.admin.getUserById(userId);
 
     if (fetchUserError || !userData || !userData.user) {
       throw new CustomError('Error fetching user data', 500);
@@ -97,7 +98,7 @@ export const getStaffMembers = async (c: Context) => {
 
     // Fetch staff members
     const { data: staffMembers, error: staffError } =
-      await supabase.auth.admin.listUsers();
+      await supabaseAdmin.auth.admin.listUsers();
 
     if (staffError) {
       console.error('Error fetching staff members:', staffError);
@@ -146,7 +147,7 @@ export const removeStaffMember = async (c: Context) => {
 
     // Check if the user is an owner
     const { data: ownerData, error: ownerError } =
-      await supabase.auth.admin.getUserById(ownerId);
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
 
     if (ownerError || !ownerData || !ownerData.user) {
       throw new CustomError('Error fetching owner data', 500);
@@ -169,7 +170,7 @@ export const removeStaffMember = async (c: Context) => {
 
     // Check if the staff member belongs to the owner's business
     const { data: staffData, error: staffError } =
-      await supabase.auth.admin.getUserById(staffId);
+      await supabaseAdmin.auth.admin.getUserById(staffId);
 
     if (staffError || !staffData || !staffData.user) {
       throw new CustomError('Error fetching staff data', 500);
