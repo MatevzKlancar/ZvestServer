@@ -99,20 +99,20 @@ export const login = async (c: Context) => {
 
 export const confirmSignUp = async (c: Context) => {
   try {
-    const token = c.req.query('token_hash') || '';
-    const type = c.req.query('type') || '';
+    const { token_hash, type, name, surname, date_of_birth } =
+      await c.req.json();
 
-    if (!token || !['signup', 'invite'].includes(type)) {
-      return c.text('Invalid confirmation link', 400);
+    if (!token_hash || !['signup', 'invite'].includes(type)) {
+      throw new CustomError('Invalid confirmation data', 400);
     }
 
     const { data, error } = await supabase.auth.verifyOtp({
-      token_hash: token,
+      token_hash,
       type: type === 'invite' ? 'invite' : 'signup',
     });
 
     if (error) {
-      return c.json({ error: 'Invalid or expired token' }, 400);
+      throw new CustomError('Invalid or expired token', 400);
     }
 
     if (data.user && data.user.id) {
@@ -126,6 +126,9 @@ export const confirmSignUp = async (c: Context) => {
         email,
         role,
         business_id,
+        name,
+        surname,
+        date_of_birth,
       };
 
       const { error: insertError } = await supabase
@@ -133,7 +136,7 @@ export const confirmSignUp = async (c: Context) => {
         .insert(userData);
 
       if (insertError) {
-        console.error('Error inserting user data:', insertError);
+        throw new CustomError('Error inserting user data', 500);
       }
     }
 
@@ -141,9 +144,19 @@ export const confirmSignUp = async (c: Context) => {
       JSON.stringify(data.session)
     )}`;
 
-    return c.redirect(loginUrl);
+    return sendSuccessResponse(
+      c,
+      { redirectUrl: loginUrl },
+      'Signup confirmed successfully'
+    );
   } catch (error) {
-    console.error('Error in confirmSignUp:', error);
-    return c.text('An error occurred during confirmation', 500);
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    return sendErrorResponse(
+      c,
+      'An unexpected error occurred during confirmation',
+      500
+    );
   }
 };
