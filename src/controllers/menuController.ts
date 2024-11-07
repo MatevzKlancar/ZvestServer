@@ -406,40 +406,78 @@ export const updateMenu = async (c: Context) => {
         // Handle each item
         for (const [itemIndex, item] of category.items.entries()) {
           if (item.id) {
-            // Update existing item
-            const { error: itemError } = await supabaseAdmin
+            // First check if the item exists
+            const { data: existingItem } = await supabaseAdmin
               .from('menu_items')
-              .update({
-                price: item.price,
-                duration: item.duration,
-                image_url: item.image_url,
-                order_index: itemIndex,
-              })
-              .eq('id', item.id);
+              .select('id')
+              .eq('id', item.id)
+              .single();
 
-            if (itemError) throw itemError;
+            if (!existingItem) {
+              // If item doesn't exist, create it as a new item
+              const { data: newItem, error: newItemError } = await supabaseAdmin
+                .from('menu_items')
+                .insert({
+                  category_id: category.id,
+                  price: item.price,
+                  duration: item.duration,
+                  image_url: item.image_url,
+                  order_index: itemIndex,
+                })
+                .select()
+                .single();
 
-            // Delete existing item translations
-            const { error: deleteItemTransError } = await supabaseAdmin
-              .from('menu_item_translations')
-              .delete()
-              .eq('item_id', item.id);
+              if (newItemError) throw newItemError;
 
-            if (deleteItemTransError) throw deleteItemTransError;
+              // Create item translations with the new item id
+              const { error: itemTranslationsError } = await supabaseAdmin
+                .from('menu_item_translations')
+                .insert(
+                  item.translations.map((t) => ({
+                    item_id: newItem.id,
+                    language_code: t.language_code,
+                    name: t.name,
+                    description: t.description,
+                  }))
+                );
 
-            // Insert new item translations
-            const { error: itemTranslationError } = await supabaseAdmin
-              .from('menu_item_translations')
-              .insert(
-                item.translations.map((t) => ({
-                  item_id: item.id,
-                  language_code: t.language_code,
-                  name: t.name,
-                  description: t.description,
-                }))
-              );
+              if (itemTranslationsError) throw itemTranslationsError;
+            } else {
+              // Update existing item
+              const { error: itemError } = await supabaseAdmin
+                .from('menu_items')
+                .update({
+                  price: item.price,
+                  duration: item.duration,
+                  image_url: item.image_url,
+                  order_index: itemIndex,
+                })
+                .eq('id', item.id);
 
-            if (itemTranslationError) throw itemTranslationError;
+              if (itemError) throw itemError;
+
+              // Delete existing item translations
+              const { error: deleteItemTransError } = await supabaseAdmin
+                .from('menu_item_translations')
+                .delete()
+                .eq('item_id', item.id);
+
+              if (deleteItemTransError) throw deleteItemTransError;
+
+              // Insert new item translations
+              const { error: itemTranslationError } = await supabaseAdmin
+                .from('menu_item_translations')
+                .insert(
+                  item.translations.map((t) => ({
+                    item_id: item.id,
+                    language_code: t.language_code,
+                    name: t.name,
+                    description: t.description,
+                  }))
+                );
+
+              if (itemTranslationError) throw itemTranslationError;
+            }
           } else {
             // Create new item
             const { data: newItem, error: newItemError } = await supabaseAdmin
