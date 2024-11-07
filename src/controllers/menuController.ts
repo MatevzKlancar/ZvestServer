@@ -188,7 +188,7 @@ export const getMenu = async (c: Context) => {
     }
 
     const businessId = userData.user.user_metadata.business_id;
-    const languageCode = c.req.query('language') || 'en';
+    const languageCode = c.req.query('language');
 
     // Get menu with all related data
     const { data: menus, error: menuError } = await supabaseAdmin
@@ -226,7 +226,7 @@ export const getMenu = async (c: Context) => {
 
     if (menuError) throw menuError;
 
-    // Transform the data to include only the requested language
+    // Transform the data based on language parameter
     const formattedMenus = menus?.map((menu) => ({
       id: menu.id,
       type: menu.type,
@@ -234,25 +234,43 @@ export const getMenu = async (c: Context) => {
       categories: menu.menu_categories
         .sort((a, b) => a.order_index - b.order_index)
         .map((category) => {
-          const translation = category.menu_category_translations.find(
-            (t) => t.language_code === languageCode
-          );
+          // If language is specified, find only that translation, otherwise return all
+          const translations = languageCode
+            ? [
+                category.menu_category_translations.find(
+                  (t) => t.language_code === languageCode
+                ),
+              ]
+            : category.menu_category_translations;
 
           return {
             id: category.id,
-            name: translation?.name || '',
-            description: translation?.description,
+            ...(languageCode
+              ? {
+                  name: translations[0]?.name || '',
+                  description: translations[0]?.description,
+                }
+              : { translations }),
             items: category.menu_items
               .sort((a, b) => a.order_index - b.order_index)
               .map((item) => {
-                const itemTranslation = item.menu_item_translations.find(
-                  (t) => t.language_code === languageCode
-                );
+                // If language is specified, find only that translation, otherwise return all
+                const itemTranslations = languageCode
+                  ? [
+                      item.menu_item_translations.find(
+                        (t) => t.language_code === languageCode
+                      ),
+                    ]
+                  : item.menu_item_translations;
 
                 return {
                   id: item.id,
-                  name: itemTranslation?.name || '',
-                  description: itemTranslation?.description,
+                  ...(languageCode
+                    ? {
+                        name: itemTranslations[0]?.name || '',
+                        description: itemTranslations[0]?.description,
+                      }
+                    : { translations: itemTranslations }),
                   price: item.price,
                   duration: item.duration,
                   image_url: item.image_url,
