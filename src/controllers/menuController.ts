@@ -348,142 +348,49 @@ export const updateMenu = async (c: Context) => {
     // Now handle categories
     for (const [index, category] of categories.entries()) {
       if (category.id) {
-        // Update existing category
-        const { error: categoryError } = await supabaseAdmin
+        // Check if category exists
+        const { data: existingCategory } = await supabaseAdmin
           .from('menu_categories')
-          .update({ order_index: index })
-          .eq('id', category.id);
-
-        if (categoryError) throw categoryError;
-
-        // Delete existing translations
-        const { error: deleteTransError } = await supabaseAdmin
-          .from('menu_category_translations')
-          .delete()
-          .eq('category_id', category.id);
-
-        if (deleteTransError) throw deleteTransError;
-
-        // Insert new translations
-        const { error: translationError } = await supabaseAdmin
-          .from('menu_category_translations')
-          .insert(
-            category.translations.map((translation) => ({
-              category_id: category.id,
-              language_code: translation.language_code,
-              name: translation.name,
-              description: translation.description,
-            }))
-          );
-
-        if (translationError) throw translationError;
-
-        // Get existing items
-        const { data: existingItems } = await supabaseAdmin
-          .from('menu_items')
           .select('id')
-          .eq('category_id', category.id);
+          .eq('id', category.id)
+          .single();
 
-        const existingItemIds = new Set(existingItems?.map((item) => item.id));
-        const updatedItemIds = new Set(
-          category.items.map((item) => item.id).filter(Boolean)
-        );
-
-        // Delete removed items
-        const itemsToDelete = [...existingItemIds].filter(
-          (id) => !updatedItemIds.has(id)
-        );
-
-        if (itemsToDelete.length > 0) {
-          const { error: deleteItemsError } = await supabaseAdmin
-            .from('menu_items')
-            .delete()
-            .in('id', itemsToDelete);
-
-          if (deleteItemsError) throw deleteItemsError;
-        }
-
-        // Handle each item
-        for (const [itemIndex, item] of category.items.entries()) {
-          if (item.id) {
-            // First check if the item exists
-            const { data: existingItem } = await supabaseAdmin
-              .from('menu_items')
-              .select('id')
-              .eq('id', item.id)
+        if (!existingCategory) {
+          // Create new category with provided ID
+          const { data: newCategory, error: newCategoryError } =
+            await supabaseAdmin
+              .from('menu_categories')
+              .insert({
+                id: category.id,
+                menu_id: menuId,
+                order_index: index,
+              })
+              .select()
               .single();
 
-            if (!existingItem) {
-              // If item doesn't exist, create it as a new item
-              const { data: newItem, error: newItemError } = await supabaseAdmin
-                .from('menu_items')
-                .insert({
-                  category_id: category.id,
-                  price: item.price,
-                  duration: item.duration,
-                  image_url: item.image_url,
-                  order_index: itemIndex,
-                })
-                .select()
-                .single();
+          if (newCategoryError) throw newCategoryError;
 
-              if (newItemError) throw newItemError;
+          // Insert translations for new category
+          const { error: translationsError } = await supabaseAdmin
+            .from('menu_category_translations')
+            .insert(
+              category.translations.map((t) => ({
+                category_id: newCategory.id,
+                language_code: t.language_code,
+                name: t.name,
+                description: t.description,
+              }))
+            );
 
-              // Create item translations with the new item id
-              const { error: itemTranslationsError } = await supabaseAdmin
-                .from('menu_item_translations')
-                .insert(
-                  item.translations.map((t) => ({
-                    item_id: newItem.id,
-                    language_code: t.language_code,
-                    name: t.name,
-                    description: t.description,
-                  }))
-                );
+          if (translationsError) throw translationsError;
 
-              if (itemTranslationsError) throw itemTranslationsError;
-            } else {
-              // Update existing item
-              const { error: itemError } = await supabaseAdmin
-                .from('menu_items')
-                .update({
-                  price: item.price,
-                  duration: item.duration,
-                  image_url: item.image_url,
-                  order_index: itemIndex,
-                })
-                .eq('id', item.id);
-
-              if (itemError) throw itemError;
-
-              // Delete existing item translations
-              const { error: deleteItemTransError } = await supabaseAdmin
-                .from('menu_item_translations')
-                .delete()
-                .eq('item_id', item.id);
-
-              if (deleteItemTransError) throw deleteItemTransError;
-
-              // Insert new item translations
-              const { error: itemTranslationError } = await supabaseAdmin
-                .from('menu_item_translations')
-                .insert(
-                  item.translations.map((t) => ({
-                    item_id: item.id,
-                    language_code: t.language_code,
-                    name: t.name,
-                    description: t.description,
-                  }))
-                );
-
-              if (itemTranslationError) throw itemTranslationError;
-            }
-          } else {
+          // Handle items for new category
+          for (const [itemIndex, item] of category.items.entries()) {
             // Create new item
             const { data: newItem, error: newItemError } = await supabaseAdmin
               .from('menu_items')
               .insert({
-                category_id: category.id,
+                category_id: newCategory.id,
                 price: item.price,
                 duration: item.duration,
                 image_url: item.image_url,
@@ -507,6 +414,171 @@ export const updateMenu = async (c: Context) => {
               );
 
             if (itemTranslationsError) throw itemTranslationsError;
+          }
+        } else {
+          // Update existing category
+          const { error: categoryError } = await supabaseAdmin
+            .from('menu_categories')
+            .update({ order_index: index })
+            .eq('id', category.id);
+
+          if (categoryError) throw categoryError;
+
+          // Delete existing translations
+          const { error: deleteTransError } = await supabaseAdmin
+            .from('menu_category_translations')
+            .delete()
+            .eq('category_id', category.id);
+
+          if (deleteTransError) throw deleteTransError;
+
+          // Insert new translations
+          const { error: translationError } = await supabaseAdmin
+            .from('menu_category_translations')
+            .insert(
+              category.translations.map((translation) => ({
+                category_id: category.id,
+                language_code: translation.language_code,
+                name: translation.name,
+                description: translation.description,
+              }))
+            );
+
+          if (translationError) throw translationError;
+
+          // Get existing items
+          const { data: existingItems } = await supabaseAdmin
+            .from('menu_items')
+            .select('id')
+            .eq('category_id', category.id);
+
+          const existingItemIds = new Set(
+            existingItems?.map((item) => item.id)
+          );
+          const updatedItemIds = new Set(
+            category.items.map((item) => item.id).filter(Boolean)
+          );
+
+          // Delete removed items
+          const itemsToDelete = [...existingItemIds].filter(
+            (id) => !updatedItemIds.has(id)
+          );
+
+          if (itemsToDelete.length > 0) {
+            const { error: deleteItemsError } = await supabaseAdmin
+              .from('menu_items')
+              .delete()
+              .in('id', itemsToDelete);
+
+            if (deleteItemsError) throw deleteItemsError;
+          }
+
+          // Handle each item
+          for (const [itemIndex, item] of category.items.entries()) {
+            if (item.id) {
+              // First check if the item exists
+              const { data: existingItem } = await supabaseAdmin
+                .from('menu_items')
+                .select('id')
+                .eq('id', item.id)
+                .single();
+
+              if (!existingItem) {
+                // If item doesn't exist, create it as a new item
+                const { data: newItem, error: newItemError } =
+                  await supabaseAdmin
+                    .from('menu_items')
+                    .insert({
+                      category_id: category.id,
+                      price: item.price,
+                      duration: item.duration,
+                      image_url: item.image_url,
+                      order_index: itemIndex,
+                    })
+                    .select()
+                    .single();
+
+                if (newItemError) throw newItemError;
+
+                // Create item translations with the new item id
+                const { error: itemTranslationsError } = await supabaseAdmin
+                  .from('menu_item_translations')
+                  .insert(
+                    item.translations.map((t) => ({
+                      item_id: newItem.id,
+                      language_code: t.language_code,
+                      name: t.name,
+                      description: t.description,
+                    }))
+                  );
+
+                if (itemTranslationsError) throw itemTranslationsError;
+              } else {
+                // Update existing item
+                const { error: itemError } = await supabaseAdmin
+                  .from('menu_items')
+                  .update({
+                    price: item.price,
+                    duration: item.duration,
+                    image_url: item.image_url,
+                    order_index: itemIndex,
+                  })
+                  .eq('id', item.id);
+
+                if (itemError) throw itemError;
+
+                // Delete existing item translations
+                const { error: deleteItemTransError } = await supabaseAdmin
+                  .from('menu_item_translations')
+                  .delete()
+                  .eq('item_id', item.id);
+
+                if (deleteItemTransError) throw deleteItemTransError;
+
+                // Insert new item translations
+                const { error: itemTranslationError } = await supabaseAdmin
+                  .from('menu_item_translations')
+                  .insert(
+                    item.translations.map((t) => ({
+                      item_id: item.id,
+                      language_code: t.language_code,
+                      name: t.name,
+                      description: t.description,
+                    }))
+                  );
+
+                if (itemTranslationError) throw itemTranslationError;
+              }
+            } else {
+              // Create new item
+              const { data: newItem, error: newItemError } = await supabaseAdmin
+                .from('menu_items')
+                .insert({
+                  category_id: category.id,
+                  price: item.price,
+                  duration: item.duration,
+                  image_url: item.image_url,
+                  order_index: itemIndex,
+                })
+                .select()
+                .single();
+
+              if (newItemError) throw newItemError;
+
+              // Create item translations
+              const { error: itemTranslationsError } = await supabaseAdmin
+                .from('menu_item_translations')
+                .insert(
+                  item.translations.map((t) => ({
+                    item_id: newItem.id,
+                    language_code: t.language_code,
+                    name: t.name,
+                    description: t.description,
+                  }))
+                );
+
+              if (itemTranslationsError) throw itemTranslationsError;
+            }
           }
         }
       } else {
