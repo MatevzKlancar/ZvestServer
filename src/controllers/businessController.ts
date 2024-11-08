@@ -555,16 +555,27 @@ export const getPublicBusinessData = async (c: Context) => {
   try {
     const businessId = c.req.param('businessId');
 
-    let query = supabaseAdmin
-      .from('businesses')
-      .select(
-        'id, name, description, image_url, background_image_url, location, opening_time, phone_number, website'
-      );
+    let query = supabaseAdmin.from('businesses').select(`
+        id,
+        name,
+        created_at,
+        loyalty_type,
+        opening_time,
+        phone_number,
+        location,
+        description,
+        company_name,
+        registration_place,
+        registry_number,
+        website,
+        image_url,
+        background_image_url,
+        info_image_urls
+      `);
 
     if (businessId) {
       query = query.eq('id', businessId);
     } else {
-      // Limit the number of businesses returned if no specific ID is provided
       query = query.limit(10);
     }
 
@@ -572,22 +583,19 @@ export const getPublicBusinessData = async (c: Context) => {
 
     if (error) {
       console.error('Error fetching public business data:', error);
-      return sendErrorResponse(c, 'Error fetching public business data', 500);
+      return c.json({ error: 'Error fetching public business data' }, 500);
     }
 
     if (businessId && businesses.length === 0) {
-      return sendErrorResponse(c, 'Business not found', 404);
+      return c.json({ error: 'Business not found' }, 404);
     }
 
-    return sendSuccessResponse(
-      c,
-      { businesses: businessId ? businesses[0] : businesses },
-      businessId
-        ? 'Public business data retrieved successfully'
-        : 'Public businesses data retrieved successfully'
-    );
+    return c.json({
+      message: 'Business retrieved successfully',
+      businesses: businessId ? businesses[0] : businesses,
+    });
   } catch (error) {
     console.error('Unexpected error:', error);
-    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+    return c.json({ error: 'An unexpected error occurred' }, 500);
   }
 };
