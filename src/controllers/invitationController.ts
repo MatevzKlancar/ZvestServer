@@ -172,14 +172,74 @@ export const confirmAndSetPassword = async (c: Context) => {
     }
 
     // Update the invitation record
-    await supabase
+    const { error: acceptError } = await supabase
       .from('invitations')
-      .update({ accepted: new Date().toISOString() })
+      .update({ accepted: true })
       .eq('email', invitedUser.email);
+
+    if (acceptError) {
+      console.log('Error updating invitation status:', acceptError);
+      throw new CustomError('Error updating invitation status', 500);
+    }
 
     return sendSuccessResponse(c, {}, 'Account created successfully', 201);
   } catch (error) {
     console.error('Error in confirmAndSetPassword:', error);
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
+};
+
+export const getInvitations = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+
+    if (!authUser || !authUser.id) {
+      throw new CustomError('Not authenticated', 401);
+    }
+
+    const ownerId = authUser.id;
+
+    // Check if the user is an owner
+    const { data: userData, error: userError } =
+      await supabaseAdmin.auth.admin.getUserById(ownerId);
+
+    if (userError || !userData || !userData.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const ownerUser = userData.user;
+
+    if (ownerUser.user_metadata?.role !== 'Owner') {
+      throw new CustomError(
+        'Access denied. Only business owners can view invitations.',
+        403
+      );
+    }
+
+    const businessId = ownerUser.user_metadata?.business_id;
+
+    // Fetch invitations for the owner's business
+    const { data: invitations, error: invitationsError } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false });
+
+    if (invitationsError) {
+      console.error('Error fetching invitations:', invitationsError);
+      throw new CustomError('Error fetching invitations', 500);
+    }
+
+    return sendSuccessResponse(
+      c,
+      { invitations },
+      'Invitations retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Error in getInvitations:', error);
     if (error instanceof CustomError) {
       return sendErrorResponse(c, error.message, error.statusCode);
     }

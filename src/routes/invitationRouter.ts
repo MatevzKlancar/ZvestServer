@@ -17,4 +17,11 @@ invitationRouter.post(
   invitationController.confirmAndSetPassword
 );
 
+// Add this route with authMiddleware
+invitationRouter.get(
+  '/list',
+  authMiddleware,
+  invitationController.getInvitations
+);
+
 export default invitationRouter;
