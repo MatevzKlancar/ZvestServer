@@ -9,7 +9,12 @@ import invitationRouter from './invitationRouter';
 
 const dashboardRouter = new Hono();
 
-dashboardRouter.use('*', authMiddleware);
+dashboardRouter.use('/business/*', authMiddleware);
+dashboardRouter.use('/loyalty/*', authMiddleware);
+dashboardRouter.use('/staff/*', authMiddleware);
+dashboardRouter.use('/menu/*', authMiddleware);
+dashboardRouter.use('/scan', authMiddleware);
+dashboardRouter.use('/invitations/create', authMiddleware);
 
 dashboardRouter.route('/business', businessRouter);
 dashboardRouter.route('/loyalty', loyaltyRouter);
