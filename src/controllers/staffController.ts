@@ -12,37 +12,41 @@ export const getStaffActionHistory = async (c: Context) => {
       throw new CustomError('Not authenticated', 401);
     }
 
-    const staffUserId = authUser.id;
+    const userId = authUser.id;
 
-    // Check if the user is a staff member
+    // Check if the user is a staff member or owner
     const { data: userData, error: fetchUserError } =
-      await supabaseAdmin.auth.admin.getUserById(staffUserId);
+      await supabaseAdmin.auth.admin.getUserById(userId);
 
     if (fetchUserError || !userData || !userData.user) {
       throw new CustomError('Error fetching user data', 500);
     }
 
-    const staffUser = userData.user;
+    const user = userData.user;
+    const userRole = user.user_metadata?.role;
+    const businessId = user.user_metadata?.business_id;
 
-    const staffData = {
-      user_id: staffUser.id,
-      business_id: staffUser.user_metadata?.business_id,
-      role: staffUser.user_metadata?.role,
-    };
-
-    if (staffData.role !== 'Staff') {
+    if (!['Staff', 'Owner'].includes(userRole)) {
       throw new CustomError(
-        'Access denied. Only staff members can view their action history.',
+        'Access denied. Only staff members and owners can view action history.',
         403
       );
     }
 
-    // Fetch staff action history
-    const { data: actionHistory, error: historyError } = await supabase
-      .from('staff_actions')
-      .select('*')
-      .eq('staff_user_id', staffUserId)
-      .order('performed_at', { ascending: false });
+    let query = supabase.from('staff_actions').select('*');
+
+    // If user is staff, only show their actions
+    if (userRole === 'Staff') {
+      query = query.eq('staff_user_id', userId);
+    } else {
+      // If user is owner, show all staff actions for their business
+      query = query.eq('business_id', businessId);
+    }
+
+    const { data: actionHistory, error: historyError } = await query.order(
+      'performed_at',
+      { ascending: false }
+    );
 
     if (historyError) {
       console.error('Error fetching staff action history:', historyError);

@@ -33,9 +33,11 @@ export const awardLoyaltyPoints = async (c: Context) => {
     role: staffUser.user_metadata?.role,
   };
 
-  if (staffData.role !== 'Staff') {
+  if (!['Staff', 'Owner'].includes(staffData.role)) {
     return c.json(
-      { error: 'Access denied. Only staff members can award points.' },
+      {
+        error: 'Access denied. Only staff members and owners can award points.',
+      },
       403
     );
   }

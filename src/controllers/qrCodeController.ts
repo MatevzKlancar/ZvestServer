@@ -99,9 +99,9 @@ export const handleQRCode = async (c: Context) => {
 
     const staffUser = userData.user;
 
-    if (staffUser.user_metadata?.role !== 'Staff') {
+    if (!['Staff', 'Owner'].includes(staffUser.user_metadata?.role)) {
       throw new CustomError(
-        'Access denied. Only staff members can scan QR codes.',
+        'Access denied. Only staff members and owners can scan QR codes.',
         403
       );
     }

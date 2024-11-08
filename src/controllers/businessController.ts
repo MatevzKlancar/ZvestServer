@@ -455,7 +455,7 @@ export const getAllOrSpecificBusiness = async (c: Context) => {
   try {
     const user = c.get('user');
 
-    if (!user || !user.sub) {
+    if (!user) {
       return c.json({ error: 'Not authenticated' }, 401);
     }
 
@@ -492,13 +492,23 @@ export const getAllOrSpecificBusiness = async (c: Context) => {
 
 export const getUserBusinessesWithPoints = async (c: Context) => {
   try {
-    const user = c.get('user');
+    const authUser = c.get('user');
 
-    if (!user || !user.sub) {
-      return c.json({ error: 'Not authenticated' }, 401);
+    if (!authUser || !authUser.id) {
+      return sendErrorResponse(c, 'Not authenticated', 401);
     }
 
-    const userId = user.sub;
+    // Debug log to check the user ID
+    console.log('User ID:', authUser.id);
+
+    // Verify the user exists first
+    const { data: userData, error: userError } =
+      await supabaseAdmin.auth.admin.getUserById(authUser.id);
+
+    if (userError || !userData) {
+      console.error('Error fetching user:', userError);
+      return sendErrorResponse(c, 'User not found', 404);
+    }
 
     const { data, error } = await supabaseAdmin
       .from('user_loyalty_points')
@@ -513,13 +523,14 @@ export const getUserBusinessesWithPoints = async (c: Context) => {
         )
       `
       )
-      .eq('user_id', userId)
+      .eq('user_id', authUser.id)
       .gt('total_points', 0);
 
     if (error) {
       console.error('Error fetching user businesses with points:', error);
-      return c.json(
-        { error: 'Error fetching user businesses with points' },
+      return sendErrorResponse(
+        c,
+        'Error fetching user businesses with points',
         500
       );
     }
@@ -529,13 +540,14 @@ export const getUserBusinessesWithPoints = async (c: Context) => {
       points: item.total_points,
     }));
 
-    return c.json({
-      message: 'User businesses with points retrieved successfully',
-      businesses: formattedData,
-    });
+    return sendSuccessResponse(
+      c,
+      { businesses: formattedData },
+      'User businesses with points retrieved successfully'
+    );
   } catch (error) {
     console.error('Unexpected error:', error);
-    return c.json({ error: 'An unexpected error occurred' }, 500);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };
 

@@ -208,9 +208,12 @@ export const verifyCoupon = async (c: Context) => {
 
   const staffUser = userData.user;
 
-  if (staffUser.user_metadata?.role !== 'Staff') {
+  if (!['Staff', 'Owner'].includes(staffUser.user_metadata?.role)) {
     return c.json(
-      { error: 'Access denied. Only staff members can verify coupons.' },
+      {
+        error:
+          'Access denied. Only staff members and owners can verify coupons.',
+      },
       403
     );
   }
