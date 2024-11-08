@@ -112,22 +112,21 @@ export const handleQRCode = async (c: Context) => {
       throw new CustomError('Invalid input. Please provide QR code data.', 400);
     }
 
-    // Verify and mark QR code as used
-    const { data: qrCode, error: qrCodeError } = await supabase
-      .from('qr_codes')
-      .update({ used: true })
-      .eq('qr_data', qrCodeData)
-      .eq('used', false)
-      .select()
-      .single();
-
-    if (qrCodeError || !qrCode) {
-      throw new CustomError('Invalid or already used QR code.', 400);
-    }
-
     // Check if amount is provided to determine the action
     if (amount !== undefined) {
-      // This is a loyalty points action
+      // This is a loyalty points action - check qr_codes table
+      const { data: qrCode, error: qrCodeError } = await supabase
+        .from('qr_codes')
+        .update({ used: true })
+        .eq('qr_data', qrCodeData)
+        .eq('used', false)
+        .select()
+        .single();
+
+      if (qrCodeError || !qrCode) {
+        throw new CustomError('Invalid or already used QR code.', 400);
+      }
+
       if (isNaN(amount) || amount <= 0) {
         throw new CustomError(
           'Invalid input. Please provide a valid amount for loyalty points.',
@@ -136,8 +135,36 @@ export const handleQRCode = async (c: Context) => {
       }
       return awardLoyaltyPoints(c);
     } else {
-      // This is a coupon verification action
-      return verifyCoupon(c);
+      // This is a coupon verification - check redeemed_coupons table
+      const { data: redeemedCoupon, error: couponError } = await supabase
+        .from('redeemed_coupons')
+        .select('*')
+        .eq('id', qrCodeData)
+        .eq('verified', false)
+        .single();
+
+      if (couponError || !redeemedCoupon) {
+        throw new CustomError('Invalid or already verified coupon.', 400);
+      }
+
+      // Update the redeemed_coupon to mark it as verified
+      const { error: updateError } = await supabase
+        .from('redeemed_coupons')
+        .update({
+          verified: true,
+          verified_at: new Date().toISOString(),
+        })
+        .eq('id', qrCodeData);
+
+      if (updateError) {
+        throw new CustomError('Error updating coupon status.', 500);
+      }
+
+      // Return success response instead of calling verifyCoupon
+      return sendSuccessResponse(c, {
+        message: 'Coupon verified successfully',
+        couponId: redeemedCoupon.coupon_id,
+      });
     }
   } catch (error) {
     if (error instanceof CustomError) {

@@ -132,37 +132,46 @@ export const redeemCoupon = async (c: Context) => {
     return c.json({ error: 'Coupon ID is required' }, 400);
   }
 
-  // Fetch the coupon and include the business_id
+  // Fetch the coupon and include the business_id and points_required
   const { data: coupon, error: couponError } = await supabase
     .from('coupons')
-    .select('*, business_id, max_redemptions')
+    .select('*, business_id, points_required, max_redemptions')
     .eq('id', couponId)
     .single();
 
-  if (couponError) {
+  if (couponError || !coupon) {
     console.error('Error fetching coupon:', couponError);
     return c.json({ error: 'Invalid coupon' }, 400);
   }
 
-  if (!coupon) {
-    return c.json({ error: 'Coupon not found' }, 404);
+  // Fetch user's current points
+  const { data: userPoints, error: pointsError } = await supabase
+    .from('user_loyalty_points')
+    .select('total_points')
+    .eq('user_id', userId)
+    .eq('business_id', coupon.business_id)
+    .single();
+
+  if (pointsError) {
+    console.error('Error fetching user points:', pointsError);
+    return c.json({ error: 'Error fetching user points' }, 500);
   }
 
-  // Check if the coupon has reached its maximum redemptions
-  if (coupon.max_redemptions !== null) {
-    const { count, error: countError } = await supabase
-      .from('redeemed_coupons')
-      .select('*', { count: 'exact' })
-      .eq('coupon_id', couponId);
+  const currentPoints = userPoints?.total_points || 0;
+  if (currentPoints < coupon.points_required) {
+    return c.json({ error: 'Insufficient points to redeem this coupon' }, 400);
+  }
 
-    if (countError) {
-      console.error('Error counting redemptions:', countError);
-      return c.json({ error: 'Error checking coupon redemptions' }, 500);
-    }
+  // Deduct points
+  const { error: updateError } = await supabase
+    .from('user_loyalty_points')
+    .update({ total_points: currentPoints - coupon.points_required })
+    .eq('user_id', userId)
+    .eq('business_id', coupon.business_id);
 
-    if (count !== null && count >= coupon.max_redemptions) {
-      return c.json({ error: 'Coupon has reached maximum redemptions' }, 400);
-    }
+  if (updateError) {
+    console.error('Error updating points:', updateError);
+    return c.json({ error: 'Error deducting points' }, 500);
   }
 
   // Insert the redeemed coupon
