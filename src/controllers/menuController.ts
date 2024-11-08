@@ -331,18 +331,31 @@ export const updateMenu = async (c: Context) => {
 
     if (updateError) throw updateError;
 
-    // First, delete all existing translations for categories that will be updated
-    const categoryIds = categories
-      .filter((c) => c.id)
-      .map((c) => c.id) as string[];
+    // Get existing categories
+    const { data: existingCategories } = await supabaseAdmin
+      .from('menu_categories')
+      .select('id')
+      .eq('menu_id', menuId);
 
-    if (categoryIds.length > 0) {
-      const { error: deleteTransError } = await supabaseAdmin
-        .from('menu_category_translations')
+    const existingCategoryIds = new Set(
+      existingCategories?.map((cat) => cat.id)
+    );
+    const updatedCategoryIds = new Set(
+      categories.map((cat) => cat.id).filter(Boolean)
+    );
+
+    // Delete categories that are not in the update request
+    const categoriesToDelete = [...existingCategoryIds].filter(
+      (id) => !updatedCategoryIds.has(id)
+    );
+
+    if (categoriesToDelete.length > 0) {
+      const { error: deleteCategoriesError } = await supabaseAdmin
+        .from('menu_categories')
         .delete()
-        .in('category_id', categoryIds);
+        .in('id', categoriesToDelete);
 
-      if (deleteTransError) throw deleteTransError;
+      if (deleteCategoriesError) throw deleteCategoriesError;
     }
 
     // Now handle categories
