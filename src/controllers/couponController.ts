@@ -37,7 +37,15 @@ export const createCoupon = async (c: Context) => {
       );
     }
 
-    const { name, description, pointsRequired } = await c.req.json();
+    const formData = await c.req.formData();
+    const image = formData.get('image') as File | null;
+    const couponDataString = formData.get('couponData') as string;
+
+    if (!couponDataString) {
+      return c.json({ error: 'Coupon data is missing' }, 400);
+    }
+
+    const { name, description, pointsRequired } = JSON.parse(couponDataString);
 
     if (
       !name ||
@@ -54,6 +62,11 @@ export const createCoupon = async (c: Context) => {
       );
     }
 
+    let imageUrl = null;
+    if (image) {
+      imageUrl = await uploadCouponImage(image, ownerId);
+    }
+
     const { data: coupon, error: couponError } = await supabase
       .from('coupons')
       .insert({
@@ -61,6 +74,7 @@ export const createCoupon = async (c: Context) => {
         name,
         description,
         points_required: pointsRequired,
+        image_url: imageUrl,
       })
       .select()
       .single();
@@ -72,6 +86,37 @@ export const createCoupon = async (c: Context) => {
     return handleError(c, error);
   }
 };
+
+// Add this helper function for uploading coupon images
+async function uploadCouponImage(
+  file: File,
+  ownerId: string
+): Promise<string | null> {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${ownerId}-${Date.now()}.${fileExt}`;
+
+  // Convert File to ArrayBuffer
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
+
+  const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+    .from('coupon-images')
+    .upload(fileName, uint8Array, {
+      contentType: file.type,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    console.error('Error uploading coupon image:', uploadError);
+    return null;
+  }
+
+  const { data } = supabaseAdmin.storage
+    .from('coupon-images')
+    .getPublicUrl(fileName);
+
+  return data.publicUrl;
+}
 
 export const redeemCoupon = async (c: Context) => {
   const authUser = c.get('user');
