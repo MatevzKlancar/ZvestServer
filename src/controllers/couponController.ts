@@ -443,3 +443,37 @@ export const deleteCoupon = async (c: Context) => {
     return handleError(c, error);
   }
 };
+
+export const getBusinessCoupons = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+    const businessId = c.req.param('businessId');
+
+    if (!authUser || !authUser.id) {
+      return c.json({ error: 'Not authenticated' }, 401);
+    }
+
+    if (!businessId) {
+      return c.json({ error: 'Business ID is required' }, 400);
+    }
+
+    // Fetch active coupons for the specified business
+    const { data: coupons, error: couponsError } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('is_active', true);
+
+    if (couponsError) {
+      console.error('Error fetching coupons:', couponsError);
+      return c.json({ error: 'Error fetching coupons' }, 500);
+    }
+
+    return c.json({
+      message: 'Coupons fetched successfully',
+      coupons,
+    });
+  } catch (error) {
+    return handleError(c, error);
+  }
+};
