@@ -3,13 +3,6 @@ import { supabaseAdmin } from '../config/supabaseAdmin';
 import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 
-// Base interfaces for translations
-interface Translation {
-  language_code: string;
-  name: string;
-  description?: string;
-}
-
 interface MenuItemTranslation {
   name: string;
   description?: string;

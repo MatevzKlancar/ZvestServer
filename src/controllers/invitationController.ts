@@ -92,8 +92,6 @@ export const createInvitation = async (c: Context) => {
       throw new CustomError('Error recording invitation', 500);
     }
 
-    console.log('Stored invitation:', invitationData);
-
     return sendSuccessResponse(
       c,
       { email },
@@ -113,9 +111,6 @@ export const confirmAndSetPassword = async (c: Context) => {
   try {
     const { token, password } = await c.req.json();
 
-    console.log('Received token:', token);
-    console.log('Token length:', token ? token.length : 0);
-
     if (!token || typeof token !== 'string') {
       throw new CustomError('Invalid token provided', 400);
     }
@@ -128,7 +123,6 @@ export const confirmAndSetPassword = async (c: Context) => {
       });
 
     if (verifyError || !verifyData || !verifyData.user) {
-      console.log('Error verifying token:', verifyError);
       throw new CustomError('Invalid or expired token', 400);
     }
 
@@ -141,7 +135,6 @@ export const confirmAndSetPassword = async (c: Context) => {
       });
 
     if (updateError) {
-      console.log('Error setting password:', updateError);
       throw new CustomError('Error setting password', 500);
     }
 
@@ -153,7 +146,6 @@ export const confirmAndSetPassword = async (c: Context) => {
       .single();
 
     if (invitationError || !invitation) {
-      console.log('Error fetching invitation:', invitationError);
       throw new CustomError('Error fetching invitation details', 500);
     }
 
@@ -167,7 +159,6 @@ export const confirmAndSetPassword = async (c: Context) => {
       });
 
     if (metadataError) {
-      console.log('Error updating user metadata:', metadataError);
       throw new CustomError('Error updating user data', 500);
     }
 
@@ -178,7 +169,6 @@ export const confirmAndSetPassword = async (c: Context) => {
       .eq('email', invitedUser.email);
 
     if (acceptError) {
-      console.log('Error updating invitation status:', acceptError);
       throw new CustomError('Error updating invitation status', 500);
     }
 

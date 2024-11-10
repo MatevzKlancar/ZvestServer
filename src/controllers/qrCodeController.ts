@@ -1,7 +1,6 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
 import { awardLoyaltyPoints } from './loyaltyController';
-import { verifyCoupon } from './couponController';
 import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 import { supabaseAdmin } from '../config/supabaseAdmin';

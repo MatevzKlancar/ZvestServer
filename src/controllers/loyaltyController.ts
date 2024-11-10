@@ -8,9 +8,6 @@ export const awardLoyaltyPoints = async (c: Context) => {
   const authUser = c.get('user');
   const { qrCodeData, amount } = await c.req.json();
 
-  console.log('Received Loyalty QR Code Data:', qrCodeData);
-  console.log('Received Loyalty Points Amount:', amount);
-
   if (!authUser || !authUser.id) {
     return c.json({ error: 'Not authenticated' }, 401);
   }

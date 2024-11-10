@@ -498,9 +498,6 @@ export const getUserBusinessesWithPoints = async (c: Context) => {
       return sendErrorResponse(c, 'Not authenticated', 401);
     }
 
-    // Debug log to check the user ID
-    console.log('User ID:', authUser.id);
-
     // Verify the user exists first
     const { data: userData, error: userError } =
       await supabaseAdmin.auth.admin.getUserById(authUser.id);

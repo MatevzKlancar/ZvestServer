@@ -1,6 +1,5 @@
 import { Context } from 'hono';
 import { supabase } from '../config/supabase';
-import { generateQRCode } from '../utils/qrCodeGenerator';
 import { StatusCode } from 'hono/utils/http-status';
 import { supabaseAdmin } from '../config/supabaseAdmin';
 
