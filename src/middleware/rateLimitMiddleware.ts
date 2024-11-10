@@ -1,35 +1,90 @@
 import { Context, Next } from 'hono';
 
-// Memory store for rate limiting
-const store = new Map<string, { count: number; resetTime: number }>();
+interface RateLimitInfo {
+  count: number;
+  resetTime: number;
+}
 
-// Clean up expired entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of store.entries()) {
-    if (value.resetTime < now) {
-      store.delete(key);
+class RateLimitStore {
+  private store: Map<string, RateLimitInfo>;
+  private maxEntries: number;
+  private cleanupInterval: ReturnType<typeof setInterval>;
+
+  constructor(maxEntries = 10000) {
+    this.store = new Map();
+    this.maxEntries = maxEntries;
+
+    // Cleanup every 5 minutes
+    this.cleanupInterval = setInterval(() => this.cleanup(), 300000);
+  }
+
+  private cleanup() {
+    const now = Date.now();
+    let deleted = 0;
+
+    // Only check up to 1000 entries per cleanup cycle
+    for (const [key, value] of this.store.entries()) {
+      if (value.resetTime < now) {
+        this.store.delete(key);
+        deleted++;
+      }
+      if (deleted >= 1000) break;
     }
   }
-}, 60000); // Clean up every minute
+
+  get(key: string): RateLimitInfo | undefined {
+    const info = this.store.get(key);
+
+    // Clean expired entry if found
+    if (info && info.resetTime < Date.now()) {
+      this.store.delete(key);
+      return undefined;
+    }
+
+    return info;
+  }
+
+  set(key: string, value: RateLimitInfo): void {
+    // If store is full, remove oldest entries
+    if (this.store.size >= this.maxEntries) {
+      const entriesToRemove = Math.ceil(this.maxEntries * 0.1); // Remove 10% of entries
+      const entries = Array.from(this.store.entries());
+      entries
+        .sort((a, b) => a[1].resetTime - b[1].resetTime)
+        .slice(0, entriesToRemove)
+        .forEach(([key]) => this.store.delete(key));
+    }
+
+    this.store.set(key, value);
+  }
+}
+
+// Create a single store instance
+const rateLimitStore = new RateLimitStore();
 
 export const rateLimitMiddleware = (
-  requests: number = 100, // Number of requests allowed
-  windowMs: number = 60000, // Time window in milliseconds (default: 1 minute)
+  requests: number = 100,
+  windowMs: number = 60000,
   message: string = 'Too many requests, please try again later.'
 ) => {
   return async (c: Context, next: Next) => {
+    // Get client identifier (IP + optional user agent)
     const ip =
-      c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+      c.req.header('x-forwarded-for')?.split(',')[0] ||
+      c.req.header('x-real-ip') ||
+      'unknown';
+    const identifier = `${ip}-${c.req.header('user-agent') || ''}`;
 
     const now = Date.now();
-    const windowStart = now - windowMs;
 
-    // Get or create rate limit info for this IP
-    let rateLimit = store.get(ip);
+    // Get or create rate limit info
+    let rateLimit = rateLimitStore.get(identifier) || {
+      count: 0,
+      resetTime: now + windowMs,
+    };
 
-    // Reset if the window has expired
-    if (!rateLimit || rateLimit.resetTime < now) {
+    // Reset if window expired
+    if (rateLimit.resetTime < now) {
       rateLimit = {
         count: 0,
         resetTime: now + windowMs,
@@ -38,9 +93,9 @@ export const rateLimitMiddleware = (
 
     // Increment request count
     rateLimit.count++;
-    store.set(ip, rateLimit);
+    rateLimitStore.set(identifier, rateLimit);
 
-    // Set rate limit headers
+    // Set headers
     c.header('X-RateLimit-Limit', requests.toString());
     c.header(
       'X-RateLimit-Remaining',
