@@ -690,3 +690,110 @@ export const deleteMenu = async (c: Context) => {
     return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };
+
+export const getPublicMenu = async (c: Context) => {
+  try {
+    const businessId = c.req.param('businessId');
+    const languageCode = c.req.query('language');
+
+    if (!businessId) {
+      return sendErrorResponse(c, 'Business ID is required', 400);
+    }
+
+    // Get menu with all related data
+    const { data: menus, error: menuError } = await supabaseAdmin
+      .from('menus')
+      .select(
+        `
+        id,
+        type,
+        is_active,
+        menu_categories (
+          id,
+          order_index,
+          menu_category_translations (
+            name,
+            description,
+            language_code
+          ),
+          menu_items (
+            id,
+            price,
+            duration,
+            image_url,
+            order_index,
+            menu_item_translations (
+              name,
+              description,
+              language_code
+            )
+          )
+        )
+      `
+      )
+      .eq('business_id', businessId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (menuError) throw menuError;
+
+    // Transform the data based on language parameter
+    const formattedMenus = menus?.map((menu) => ({
+      id: menu.id,
+      type: menu.type,
+      is_active: menu.is_active,
+      categories: menu.menu_categories
+        .sort((a, b) => a.order_index - b.order_index)
+        .map((category) => {
+          // If language is specified, find only that translation, otherwise return all
+          const translations = languageCode
+            ? [
+                category.menu_category_translations.find(
+                  (t) => t.language_code === languageCode
+                ),
+              ]
+            : category.menu_category_translations;
+
+          return {
+            id: category.id,
+            ...(languageCode
+              ? {
+                  name: translations[0]?.name || '',
+                  description: translations[0]?.description,
+                }
+              : { translations }),
+            items: category.menu_items
+              .sort((a, b) => a.order_index - b.order_index)
+              .map((item) => {
+                // If language is specified, find only that translation, otherwise return all
+                const itemTranslations = languageCode
+                  ? [
+                      item.menu_item_translations.find(
+                        (t) => t.language_code === languageCode
+                      ),
+                    ]
+                  : item.menu_item_translations;
+
+                return {
+                  id: item.id,
+                  ...(languageCode
+                    ? {
+                        name: itemTranslations[0]?.name || '',
+                        description: itemTranslations[0]?.description,
+                      }
+                    : { translations: itemTranslations }),
+                  price: item.price,
+                  duration: item.duration,
+                  image_url: item.image_url,
+                };
+              }),
+          };
+        }),
+    }));
+
+    return sendSuccessResponse(c, { menus: formattedMenus });
+  } catch (error) {
+    console.error('Error fetching public menu:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
+};

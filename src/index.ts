@@ -9,6 +9,7 @@ import clientRouter from './routes/clientRoutes';
 import authRouter from './routes/authRoutes';
 import { getPublicBusinessData } from './controllers/businessController';
 import { getPublicBusinessCoupons } from './controllers/couponController';
+import { getPublicMenu } from './controllers/menuController';
 
 const app = new Hono();
 
@@ -42,6 +43,7 @@ app.route('/auth', authRouter);
 app.get('/public/businesses', getPublicBusinessData);
 app.get('/public/businesses/:businessId', getPublicBusinessData);
 app.get('/public/businesses/:businessId/coupons', getPublicBusinessCoupons);
+app.get('/public/businesses/:businessId/menu', getPublicMenu);
 
 // Error handling
 app.onError(errorHandler);
