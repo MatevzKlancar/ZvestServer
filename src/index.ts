@@ -10,6 +10,7 @@ import authRouter from './routes/authRoutes';
 import { getPublicBusinessData } from './controllers/businessController';
 import { getPublicBusinessCoupons } from './controllers/couponController';
 import { getPublicMenu } from './controllers/menuController';
+import { rateLimitMiddleware } from './middleware/rateLimitMiddleware';
 
 const app = new Hono();
 
@@ -30,6 +31,17 @@ app.use(
     credentials: true,
   })
 );
+
+// Apply different rate limits for different routes
+// Strict rate limit for auth routes (20 requests per minute)
+app.use('/auth/*', rateLimitMiddleware(20, 60000));
+
+// Moderate rate limit for dashboard and client routes (100 requests per minute)
+app.use('/dashboard/*', rateLimitMiddleware(100, 60000));
+app.use('/client/*', rateLimitMiddleware(100, 60000));
+
+// Less strict rate limit for public routes (200 requests per minute)
+app.use('/public/*', rateLimitMiddleware(200, 60000));
 
 // Routes
 // Test route
