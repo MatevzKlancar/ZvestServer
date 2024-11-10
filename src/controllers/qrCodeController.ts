@@ -115,7 +115,21 @@ export const handleQRCode = async (c: Context) => {
 
     // Check if amount is provided to determine the action
     if (amount !== undefined) {
-      // This is a loyalty points action - check qr_codes table
+      // Check if it's a coupon QR code
+      const { data: couponCheck } = await supabase
+        .from('redeemed_coupons')
+        .select('id')
+        .eq('id', qrCodeData)
+        .single();
+
+      if (couponCheck) {
+        throw new CustomError(
+          'Invalid QR code type. Points can only be added using a profile QR code. This appears to be a coupon QR code.',
+          400
+        );
+      }
+
+      // Check qr_codes table
       const { data: qrCode, error: qrCodeError } = await supabase
         .from('qr_codes')
         .update({ used: true })
@@ -125,7 +139,10 @@ export const handleQRCode = async (c: Context) => {
         .single();
 
       if (qrCodeError || !qrCode) {
-        throw new CustomError('Invalid or already used QR code.', 400);
+        throw new CustomError(
+          'Invalid or already used profile QR code. Please generate a new one.',
+          400
+        );
       }
 
       if (isNaN(amount) || amount <= 0) {
@@ -136,7 +153,21 @@ export const handleQRCode = async (c: Context) => {
       }
       return awardLoyaltyPoints(c);
     } else {
-      // This is a coupon verification - check redeemed_coupons table
+      // This is a coupon verification - check if it's a profile QR code first
+      const { data: profileCheck } = await supabase
+        .from('qr_codes')
+        .select('id')
+        .eq('qr_data', qrCodeData)
+        .single();
+
+      if (profileCheck) {
+        throw new CustomError(
+          'Invalid QR code type. Coupons can only be verified using a coupon QR code. This appears to be a profile QR code.',
+          400
+        );
+      }
+
+      // Check redeemed_coupons table
       const { data: redeemedCoupon, error: couponError } = await supabase
         .from('redeemed_coupons')
         .select('*, coupons(*)')
@@ -169,7 +200,6 @@ export const handleQRCode = async (c: Context) => {
         throw new CustomError('Error updating coupon status.', 500);
       }
 
-      // Return success response
       return sendSuccessResponse(c, {
         message: 'Coupon verified successfully',
         couponId: redeemedCoupon.coupon_id,
