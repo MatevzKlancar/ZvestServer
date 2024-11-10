@@ -98,6 +98,7 @@ export const handleQRCode = async (c: Context) => {
     }
 
     const staffUser = userData.user;
+    const staffBusinessId = staffUser.user_metadata?.business_id;
 
     if (!['Staff', 'Owner'].includes(staffUser.user_metadata?.role)) {
       throw new CustomError(
@@ -138,13 +139,21 @@ export const handleQRCode = async (c: Context) => {
       // This is a coupon verification - check redeemed_coupons table
       const { data: redeemedCoupon, error: couponError } = await supabase
         .from('redeemed_coupons')
-        .select('*')
+        .select('*, coupons(*)')
         .eq('id', qrCodeData)
         .eq('verified', false)
         .single();
 
       if (couponError || !redeemedCoupon) {
         throw new CustomError('Invalid or already verified coupon.', 400);
+      }
+
+      // Check if the coupon belongs to the staff member's business
+      if (redeemedCoupon.business_id !== staffBusinessId) {
+        throw new CustomError(
+          'Access denied. You can only verify coupons for your business.',
+          403
+        );
       }
 
       // Update the redeemed_coupon to mark it as verified
@@ -160,7 +169,7 @@ export const handleQRCode = async (c: Context) => {
         throw new CustomError('Error updating coupon status.', 500);
       }
 
-      // Return success response instead of calling verifyCoupon
+      // Return success response
       return sendSuccessResponse(c, {
         message: 'Coupon verified successfully',
         couponId: redeemedCoupon.coupon_id,
