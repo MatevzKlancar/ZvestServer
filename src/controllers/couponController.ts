@@ -38,6 +38,7 @@ export const createCoupon = async (c: Context) => {
 
     const formData = await c.req.formData();
     const image = formData.get('image') as File | null;
+    const stickerImage = formData.get('stickerImage') as File | null;
     const couponDataString = formData.get('couponData') as string;
 
     if (!couponDataString) {
@@ -62,8 +63,18 @@ export const createCoupon = async (c: Context) => {
     }
 
     let imageUrl = null;
+    let stickerImageUrl = null;
+
     if (image) {
-      imageUrl = await uploadCouponImage(image, ownerId);
+      imageUrl = await uploadCouponImage(image, ownerId, 'regular');
+    }
+
+    if (stickerImage) {
+      stickerImageUrl = await uploadCouponImage(
+        stickerImage,
+        ownerId,
+        'sticker'
+      );
     }
 
     const { data: coupon, error: couponError } = await supabase
@@ -74,6 +85,7 @@ export const createCoupon = async (c: Context) => {
         description,
         points_required: pointsRequired,
         image_url: imageUrl,
+        sticker_image_url: stickerImageUrl,
       })
       .select()
       .single();
@@ -89,10 +101,12 @@ export const createCoupon = async (c: Context) => {
 // Add this helper function for uploading coupon images
 async function uploadCouponImage(
   file: File,
-  ownerId: string
+  ownerId: string,
+  type: 'regular' | 'sticker'
 ): Promise<string | null> {
   const fileExt = file.name.split('.').pop();
-  const fileName = `${ownerId}-${Date.now()}.${fileExt}`;
+  const prefix = type === 'sticker' ? 'stickers/' : 'regular/';
+  const fileName = `${prefix}${ownerId}-${Date.now()}.${fileExt}`;
 
   // Convert File to ArrayBuffer
   const arrayBuffer = await file.arrayBuffer();
