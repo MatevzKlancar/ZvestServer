@@ -7,7 +7,7 @@ import { supabaseAdmin } from '../config/supabaseAdmin';
 export const createInvitation = async (c: Context) => {
   try {
     const authUser = c.get('user');
-    const { email } = await c.req.json();
+    const { email, currentUrl } = await c.req.json();
 
     if (!authUser || !authUser.id) {
       throw new CustomError('Not authenticated', 401);
@@ -64,7 +64,7 @@ export const createInvitation = async (c: Context) => {
           business_name: ownerData.businesses.name,
           role: 'Staff',
         },
-        redirectTo: `${process.env.FRONTEND_URL}/dashboard/invitations/confirm-and-set-password`,
+        redirectTo: `${currentUrl}/dashboard/invitations/confirm-and-set-password`,
       });
 
     if (inviteError || !inviteData) {
