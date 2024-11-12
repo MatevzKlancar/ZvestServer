@@ -81,49 +81,69 @@ export const getQRCode = async (c: Context) => {
 export const handleQRCode = async (c: Context) => {
   try {
     const authUser = c.get('user');
+    const { qrCodeData, amount, couponId } = await c.req.json();
 
     if (!authUser || !authUser.id) {
-      throw new CustomError('Not authenticated', 401);
+      return c.json({ error: 'Not authenticated' }, 401);
     }
 
-    const staffUserId = authUser.id;
-
-    // Check if the user is a staff member
+    // Fetch complete user data from Supabase Admin
     const { data: userData, error: userError } =
-      await supabaseAdmin.auth.admin.getUserById(staffUserId);
+      await supabaseAdmin.auth.admin.getUserById(authUser.id);
 
     if (userError || !userData || !userData.user) {
-      throw new CustomError('Error fetching user data', 500);
+      console.error('Error fetching user data:', userError);
+      return c.json({ error: 'Error fetching user data' }, 500);
     }
 
     const staffUser = userData.user;
+
+    // Add debug logs
+    console.log('Staff User:', {
+      id: staffUser.id,
+      metadata: staffUser.user_metadata,
+      role: staffUser.user_metadata?.role,
+      businessId: staffUser.user_metadata?.business_id,
+    });
+
     const staffBusinessId = staffUser.user_metadata?.business_id;
 
-    if (!['Staff', 'Owner'].includes(staffUser.user_metadata?.role)) {
-      throw new CustomError(
-        'Access denied. Only staff members and owners can scan QR codes.',
-        403
+    console.log('Staff Business ID:', staffBusinessId);
+    console.log('Request payload:', { qrCodeData, amount, couponId });
+
+    if (!staffBusinessId) {
+      return c.json(
+        { error: 'Staff user is not associated with a business' },
+        400
       );
     }
 
-    const { qrCodeData, amount } = await c.req.json();
-
-    if (!qrCodeData) {
-      throw new CustomError('Invalid input. Please provide QR code data.', 400);
+    if (!qrCodeData || !amount || amount <= 0) {
+      return c.json(
+        {
+          error: 'Invalid input. Please provide valid QR code data and amount.',
+        },
+        400
+      );
     }
 
-    // Check if amount is provided to determine the action
-    if (amount !== undefined) {
-      // Check if it's a coupon QR code
-      const { data: couponCheck } = await supabase
-        .from('redeemed_coupons')
-        .select('id')
-        .eq('id', qrCodeData)
-        .single();
+    // Get business type
+    const { data: businessData, error: businessError } = await supabase
+      .from('businesses')
+      .select('loyalty_type')
+      .eq('id', staffBusinessId)
+      .single();
 
-      if (couponCheck) {
-        throw new CustomError(
-          'Invalid QR code type. Points can only be added using a profile QR code. This appears to be a coupon QR code.',
+    if (businessError) {
+      console.error('Business fetch error:', businessError);
+      return c.json({ error: 'Error fetching business data' }, 500);
+    }
+
+    // Handle points based on business type
+    if (businessData.loyalty_type === 'COUPONS') {
+      if (!couponId) {
+        return c.json(
+          { error: 'Coupon ID is required for coupon-specific points' },
           400
         );
       }
@@ -131,84 +151,135 @@ export const handleQRCode = async (c: Context) => {
       // Check qr_codes table
       const { data: qrCode, error: qrCodeError } = await supabase
         .from('qr_codes')
-        .update({ used: true })
+        .select('user_id')
         .eq('qr_data', qrCodeData)
         .eq('used', false)
-        .select()
         .single();
 
       if (qrCodeError || !qrCode) {
         throw new CustomError(
-          'Invalid or already used profile QR code. Please generate a new one.',
+          'Invalid or already used QR code. Please generate a new one.',
           400
         );
       }
 
-      if (isNaN(amount) || amount <= 0) {
-        throw new CustomError(
-          'Invalid input. Please provide a valid amount for loyalty points.',
-          400
-        );
+      // Update or create coupon-specific points
+      const { data: existingPoints, error: pointsError } = await supabase
+        .from('coupon_specific_points')
+        .select('points')
+        .eq('user_id', qrCode.user_id)
+        .eq('business_id', staffBusinessId)
+        .eq('coupon_id', couponId)
+        .maybeSingle();
+
+      if (pointsError) {
+        console.error('Error checking existing points:', pointsError);
+        throw new CustomError('Error checking points', 500);
       }
-      return awardLoyaltyPoints(c);
-    } else {
-      // This is a coupon verification - check if it's a profile QR code first
-      const { data: profileCheck } = await supabase
+
+      let newPoints = amount;
+      if (existingPoints) {
+        // If points exist, add to them
+        newPoints = existingPoints.points + amount;
+
+        const { error: updateError } = await supabase
+          .from('coupon_specific_points')
+          .update({
+            points: newPoints,
+            last_updated: new Date().toISOString(),
+          })
+          .eq('user_id', qrCode.user_id)
+          .eq('business_id', staffBusinessId)
+          .eq('coupon_id', couponId);
+
+        if (updateError) {
+          throw new CustomError('Error updating points', 500);
+        }
+      } else {
+        // If no points exist, create new record
+        const { error: insertError } = await supabase
+          .from('coupon_specific_points')
+          .insert({
+            user_id: qrCode.user_id,
+            business_id: staffBusinessId,
+            coupon_id: couponId,
+            points: newPoints,
+            last_updated: new Date().toISOString(),
+          });
+
+        if (insertError) {
+          throw new CustomError('Error creating points record', 500);
+        }
+      }
+
+      // Mark QR code as used
+      await supabase
         .from('qr_codes')
-        .select('id')
-        .eq('qr_data', qrCodeData)
-        .single();
-
-      if (profileCheck) {
-        throw new CustomError(
-          'Invalid QR code type. Coupons can only be verified using a coupon QR code. This appears to be a profile QR code.',
-          400
-        );
-      }
-
-      // Check redeemed_coupons table
-      const { data: redeemedCoupon, error: couponError } = await supabase
-        .from('redeemed_coupons')
-        .select('*, coupons(*)')
-        .eq('id', qrCodeData)
-        .eq('verified', false)
-        .single();
-
-      if (couponError || !redeemedCoupon) {
-        throw new CustomError('Invalid or already verified coupon.', 400);
-      }
-
-      // Check if the coupon belongs to the staff member's business
-      if (redeemedCoupon.business_id !== staffBusinessId) {
-        throw new CustomError(
-          'Access denied. You can only verify coupons for your business.',
-          403
-        );
-      }
-
-      // Update the redeemed_coupon to mark it as verified
-      const { error: updateError } = await supabase
-        .from('redeemed_coupons')
-        .update({
-          verified: true,
-          verified_at: new Date().toISOString(),
-        })
-        .eq('id', qrCodeData);
-
-      if (updateError) {
-        throw new CustomError('Error updating coupon status.', 500);
-      }
+        .update({ used: true })
+        .eq('qr_data', qrCodeData);
 
       return sendSuccessResponse(c, {
-        message: 'Coupon verified successfully',
-        couponId: redeemedCoupon.coupon_id,
+        message: 'Points added successfully',
+        currentPoints: newPoints,
+      });
+    } else {
+      // Handle regular loyalty points
+      const { data: qrCode, error: qrCodeError } = await supabase
+        .from('qr_codes')
+        .select('user_id')
+        .eq('qr_data', qrCodeData)
+        .eq('used', false)
+        .single();
+
+      if (qrCodeError || !qrCode) {
+        throw new CustomError(
+          'Invalid or already used QR code. Please generate a new one.',
+          400
+        );
+      }
+
+      // Update or create loyalty points
+      const { data: existingPoints, error: pointsError } = await supabase
+        .from('user_loyalty_points')
+        .select('total_points')
+        .eq('user_id', qrCode.user_id)
+        .eq('business_id', staffBusinessId)
+        .maybeSingle();
+
+      if (pointsError) {
+        console.error('Error checking loyalty points:', pointsError);
+        throw new CustomError('Error checking loyalty points', 500);
+      }
+
+      const currentPoints = existingPoints?.total_points || 0;
+      const newPoints = currentPoints + amount;
+
+      const { error: upsertError } = await supabase
+        .from('user_loyalty_points')
+        .upsert({
+          user_id: qrCode.user_id,
+          business_id: staffBusinessId,
+          total_points: newPoints,
+          last_updated: new Date().toISOString(),
+        });
+
+      if (upsertError) {
+        throw new CustomError('Error updating loyalty points', 500);
+      }
+
+      // Mark QR code as used
+      await supabase
+        .from('qr_codes')
+        .update({ used: true })
+        .eq('qr_data', qrCodeData);
+
+      return sendSuccessResponse(c, {
+        message: 'Points added successfully',
+        currentPoints: newPoints,
       });
     }
   } catch (error) {
-    if (error instanceof CustomError) {
-      return sendErrorResponse(c, error.message, error.statusCode);
-    }
-    console.error('Unexpected error:', error);
-    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+    console.error('Error handling QR code:', error);
+    return c.json({ error: 'An unexpected error occurred' }, 500);
   }
 };

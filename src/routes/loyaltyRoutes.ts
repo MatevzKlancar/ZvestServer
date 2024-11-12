@@ -21,4 +21,9 @@ loyaltyRouter.get(
   couponController.getBusinessCoupons
 );
 
+loyaltyRouter.get(
+  '/coupon-points/:businessId',
+  loyaltyController.getUserCouponSpecificPoints
+);
+
 export default loyaltyRouter;

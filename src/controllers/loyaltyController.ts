@@ -232,3 +232,63 @@ export const getUserLoyaltyPoints = async (c: Context) => {
     user_id: userId,
   });
 };
+
+export const getUserCouponSpecificPoints = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+    const businessId = c.req.param('businessId');
+
+    if (!authUser || !authUser.id) {
+      return sendErrorResponse(c, 'Not authenticated', 401);
+    }
+
+    if (!businessId) {
+      return sendErrorResponse(c, 'Business ID is required', 400);
+    }
+
+    // First get all active coupons for the business
+    const { data: businessCoupons, error: couponsError } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('is_active', true);
+
+    if (couponsError) {
+      console.error('Error fetching business coupons:', couponsError);
+      return sendErrorResponse(c, 'Error fetching business coupons', 500);
+    }
+
+    // Then get all coupon-specific points for the user
+    const { data: userPoints, error: pointsError } = await supabase
+      .from('coupon_specific_points')
+      .select('*')
+      .eq('user_id', authUser.id)
+      .eq('business_id', businessId);
+
+    if (pointsError) {
+      console.error('Error fetching user points:', pointsError);
+      return sendErrorResponse(c, 'Error fetching user points', 500);
+    }
+
+    // Combine the data
+    const couponsWithPoints = businessCoupons.map((coupon) => {
+      const pointsEntry = userPoints.find((p) => p.coupon_id === coupon.id);
+      return {
+        ...coupon,
+        current_points: pointsEntry?.points || 0,
+        last_updated: pointsEntry?.last_updated || null,
+      };
+    });
+
+    return sendSuccessResponse(
+      c,
+      {
+        coupons: couponsWithPoints,
+      },
+      'Coupon points retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
+};
