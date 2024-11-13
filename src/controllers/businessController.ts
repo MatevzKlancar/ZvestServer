@@ -363,41 +363,45 @@ export const getBusiness = async (c: Context) => {
       return sendErrorResponse(c, 'Not authenticated', 401);
     }
 
-    const ownerId = authUser.id;
+    const userId = authUser.id;
 
-    // Check if the user is an owner and get their business
+    // Check if the user is an owner or staff and get their business
     const { data, error: userError } =
-      await supabaseAdmin.auth.admin.getUserById(ownerId);
+      await supabaseAdmin.auth.admin.getUserById(userId);
 
     if (userError || !data || !data.user) {
       throw new CustomError('Error fetching user data', 500);
     }
 
-    const ownerUser = data.user;
+    const user = data.user;
 
-    const ownerData = {
-      user_id: ownerUser.id,
-      role: ownerUser.user_metadata?.role,
-      business_id: ownerUser.user_metadata?.business_id,
+    const userData = {
+      user_id: user.id,
+      role: user.user_metadata?.role,
+      business_id: user.user_metadata?.business_id,
     };
 
-    if (ownerData.role !== 'Owner') {
+    if (!['Owner', 'Staff'].includes(userData.role)) {
       return sendErrorResponse(
         c,
-        'Access denied. Only owners can view their business data.',
+        'Access denied. Only owners and staff can view business data.',
         403
       );
     }
 
-    if (!ownerData.business_id) {
-      return sendErrorResponse(c, 'You have not created a business yet.', 404);
+    if (!userData.business_id) {
+      return sendErrorResponse(
+        c,
+        'No business associated with this user.',
+        404
+      );
     }
 
     // Fetch the business data
     const { data: business, error: businessError } = await supabaseAdmin
       .from('businesses')
       .select('*')
-      .eq('id', ownerData.business_id)
+      .eq('id', userData.business_id)
       .single();
 
     if (businessError) {

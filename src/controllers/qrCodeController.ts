@@ -224,59 +224,100 @@ export const handleQRCode = async (c: Context) => {
       });
     } else {
       // Handle regular loyalty points
-      const { data: qrCode, error: qrCodeError } = await supabase
-        .from('qr_codes')
-        .select('user_id')
-        .eq('qr_data', qrCodeData)
-        .eq('used', false)
-        .single();
+      try {
+        const { data: qrCode, error: qrCodeError } = await supabase
+          .from('qr_codes')
+          .select('user_id')
+          .eq('qr_data', qrCodeData)
+          .eq('used', false)
+          .single();
 
-      if (qrCodeError || !qrCode) {
-        throw new CustomError(
-          'Invalid or already used QR code. Please generate a new one.',
-          400
-        );
-      }
+        console.log('QR Code lookup result:', { qrCode, qrCodeError });
 
-      // Update or create loyalty points
-      const { data: existingPoints, error: pointsError } = await supabase
-        .from('user_loyalty_points')
-        .select('total_points')
-        .eq('user_id', qrCode.user_id)
-        .eq('business_id', staffBusinessId)
-        .maybeSingle();
+        if (qrCodeError || !qrCode) {
+          throw new CustomError(
+            'Invalid or already used QR code. Please generate a new one.',
+            400
+          );
+        }
 
-      if (pointsError) {
-        console.error('Error checking loyalty points:', pointsError);
-        throw new CustomError('Error checking loyalty points', 500);
-      }
+        // Update or create loyalty points
+        const { data: existingPoints, error: pointsError } = await supabase
+          .from('user_loyalty_points')
+          .select('total_points')
+          .eq('user_id', qrCode.user_id)
+          .eq('business_id', staffBusinessId)
+          .maybeSingle();
 
-      const currentPoints = existingPoints?.total_points || 0;
-      const newPoints = currentPoints + amount;
+        console.log('Existing points lookup:', { existingPoints, pointsError });
 
-      const { error: upsertError } = await supabase
-        .from('user_loyalty_points')
-        .upsert({
-          user_id: qrCode.user_id,
-          business_id: staffBusinessId,
-          total_points: newPoints,
-          last_updated: new Date().toISOString(),
+        if (pointsError) {
+          console.error('Error checking loyalty points:', pointsError);
+          throw new CustomError('Error checking loyalty points', 500);
+        }
+
+        const currentPoints = existingPoints?.total_points || 0;
+        const newPoints = currentPoints + amount;
+
+        console.log('Points calculation:', {
+          currentPoints,
+          amount,
+          newPoints,
+          userId: qrCode.user_id,
+          businessId: staffBusinessId,
         });
 
-      if (upsertError) {
-        throw new CustomError('Error updating loyalty points', 500);
+        // If points exist, update them
+        if (existingPoints) {
+          const { error: updateError } = await supabase
+            .from('user_loyalty_points')
+            .update({
+              total_points: newPoints,
+              last_updated: new Date().toISOString(),
+            })
+            .eq('user_id', qrCode.user_id)
+            .eq('business_id', staffBusinessId);
+
+          if (updateError) {
+            console.error('Update error:', updateError);
+            throw new CustomError('Error updating loyalty points', 500);
+          }
+        } else {
+          // If no points exist, insert new record
+          const { error: insertError } = await supabase
+            .from('user_loyalty_points')
+            .insert({
+              user_id: qrCode.user_id,
+              business_id: staffBusinessId,
+              total_points: newPoints,
+              last_updated: new Date().toISOString(),
+            });
+
+          if (insertError) {
+            console.error('Insert error:', insertError);
+            throw new CustomError('Error creating points record', 500);
+          }
+        }
+
+        // Mark QR code as used
+        const { error: markUsedError } = await supabase
+          .from('qr_codes')
+          .update({ used: true })
+          .eq('qr_data', qrCodeData);
+
+        if (markUsedError) {
+          console.error('Error marking QR code as used:', markUsedError);
+          throw new CustomError('Error marking QR code as used', 500);
+        }
+
+        return sendSuccessResponse(c, {
+          message: 'Points added successfully',
+          currentPoints: newPoints,
+        });
+      } catch (error) {
+        console.error('Detailed error in points handling:', error);
+        throw error;
       }
-
-      // Mark QR code as used
-      await supabase
-        .from('qr_codes')
-        .update({ used: true })
-        .eq('qr_data', qrCodeData);
-
-      return sendSuccessResponse(c, {
-        message: 'Points added successfully',
-        currentPoints: newPoints,
-      });
     }
   } catch (error) {
     console.error('Error handling QR code:', error);
