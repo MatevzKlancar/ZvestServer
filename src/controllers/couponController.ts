@@ -341,6 +341,15 @@ export const verifyCoupon = async (c: Context) => {
       return c.json({ error: 'This coupon has already been verified' }, 400);
     }
 
+    // Check if the coupon is still valid (within 5 minutes)
+    const redeemedAt = new Date(redeemedCoupon.redeemed_at);
+    const now = new Date();
+    const diffInMinutes = (now.getTime() - redeemedAt.getTime()) / (1000 * 60);
+
+    if (diffInMinutes > 5) {
+      return c.json({ error: 'This coupon has expired' }, 400);
+    }
+
     // Mark the coupon as verified
     const { error: updateError } = await supabase
       .from('redeemed_coupons')
@@ -551,6 +560,69 @@ export const getPublicBusinessCoupons = async (c: Context) => {
     });
   } catch (error) {
     console.error('Error fetching public business coupons:', error);
+    return c.json({ error: 'An unexpected error occurred' }, 500);
+  }
+};
+
+export const getRedeemedCoupon = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+
+    if (!authUser || !authUser.id) {
+      return c.json({ error: 'Not authenticated' }, 401);
+    }
+
+    // Get the user's most recent unverified redeemed coupon
+    const { data: redeemedCoupon, error: fetchError } = await supabase
+      .from('redeemed_coupons')
+      .select(
+        `
+        *,
+        coupons (
+          name,
+          points_required,
+          image_url,
+          sticker_image_url
+        )
+      `
+      )
+      .eq('user_id', authUser.id)
+      .eq('verified', false)
+      .order('redeemed_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (fetchError || !redeemedCoupon) {
+      return c.json(
+        {
+          message: 'No active redeemed coupon found',
+          redeemedCoupon: null,
+        },
+        200
+      );
+    }
+
+    // Check if the coupon is still valid (within 5 minutes)
+    const redeemedAt = new Date(redeemedCoupon.redeemed_at);
+    const now = new Date();
+    const diffInMinutes = (now.getTime() - redeemedAt.getTime()) / (1000 * 60);
+
+    if (diffInMinutes > 5) {
+      return c.json(
+        {
+          message: 'No active redeemed coupon found',
+          redeemedCoupon: null,
+        },
+        200
+      );
+    }
+
+    return c.json({
+      message: 'Redeemed coupon retrieved successfully',
+      redeemedCoupon,
+    });
+  } catch (error) {
+    console.error('Error getting redeemed coupon:', error);
     return c.json({ error: 'An unexpected error occurred' }, 500);
   }
 };
