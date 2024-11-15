@@ -4,6 +4,56 @@ import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 import { supabaseAdmin } from '../config/supabaseAdmin';
 
+interface Business {
+  id: string;
+  name: string;
+  loyalty_type: string;
+}
+
+interface RegularPointsData {
+  business_id: string;
+  total_points: number;
+  businesses: Business;
+}
+
+interface CouponPointsData {
+  business_id: string;
+  businesses: Business;
+}
+
+interface Coupon {
+  id: string;
+  name: string;
+  description: string;
+  points_required: number;
+  coupon_specific_points: Array<{
+    points: number;
+    last_updated: string;
+  }>;
+}
+
+interface BusinessSummary {
+  id: string;
+  name: string;
+  loyalty_type: string;
+  total_points: number;
+  has_regular_points: boolean;
+  has_coupon_points: boolean;
+}
+
+interface BusinessCouponSummary {
+  businessId: string;
+  businessName: string;
+  coupons: Array<{
+    id: string;
+    name: string;
+    description: string;
+    points_required: number;
+    current_points: number;
+    last_updated: string;
+  }>;
+}
+
 export const awardLoyaltyPoints = async (c: Context) => {
   const authUser = c.get('user');
   const { qrCodeData, amount } = await c.req.json();
@@ -290,5 +340,159 @@ export const getUserCouponSpecificPoints = async (c: Context) => {
   } catch (error) {
     console.error('Unexpected error:', error);
     return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
+};
+
+export const getUserLoyaltySummary = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+
+    if (!authUser || !authUser.id) {
+      return sendErrorResponse(c, 'Not authenticated', 401);
+    }
+
+    // Get businesses with regular loyalty points
+    const { data: regularPointsData, error: regularPointsError } =
+      (await supabase
+        .from('user_loyalty_points')
+        .select('business_id, total_points, businesses(id, name, loyalty_type)')
+        .eq('user_id', authUser.id)) as {
+        data: RegularPointsData[] | null;
+        error: any;
+      };
+
+    if (regularPointsError) {
+      console.error('Error fetching regular points:', regularPointsError);
+      return sendErrorResponse(c, 'Error fetching loyalty points', 500);
+    }
+
+    // Get businesses with coupon-specific points
+    const { data: rawCouponPointsData, error: couponPointsError } =
+      (await supabase
+        .from('coupon_specific_points')
+        .select(
+          `
+        business_id,
+        businesses (
+          id,
+          name,
+          loyalty_type
+        )
+      `
+        )
+        .eq('user_id', authUser.id)) as {
+        data: CouponPointsData[] | null;
+        error: any;
+      };
+
+    if (couponPointsError) {
+      console.error('Error fetching coupon points:', couponPointsError);
+      return sendErrorResponse(c, 'Error fetching coupon points', 500);
+    }
+
+    // Deduplicate the businesses from coupon points
+    const couponPointsData = Array.from(
+      new Map(
+        (rawCouponPointsData || []).map((item) => [
+          item.business_id,
+          {
+            business_id: item.business_id,
+            businesses: item.businesses,
+          },
+        ])
+      ).values()
+    );
+
+    // Combine and deduplicate businesses
+    const businessMap = new Map<string, BusinessSummary>();
+
+    // Add businesses with regular points
+    (regularPointsData || []).forEach((item) => {
+      businessMap.set(item.business_id, {
+        id: item.business_id,
+        name: item.businesses.name,
+        loyalty_type: item.businesses.loyalty_type,
+        total_points: item.total_points,
+        has_regular_points: true,
+        has_coupon_points: false,
+      });
+    });
+
+    // Add businesses with coupon points
+    couponPointsData.forEach((item) => {
+      if (businessMap.has(item.business_id)) {
+        const existing = businessMap.get(item.business_id)!;
+        existing.has_coupon_points = true;
+      } else {
+        businessMap.set(item.business_id, {
+          id: item.business_id,
+          name: item.businesses.name,
+          loyalty_type: item.businesses.loyalty_type,
+          total_points: 0,
+          has_regular_points: false,
+          has_coupon_points: true,
+        });
+      }
+    });
+
+    // Get coupon details for businesses with coupon points
+    const businessesWithCoupons: BusinessCouponSummary[] = await Promise.all(
+      Array.from(businessMap.values())
+        .filter((business) => business.has_coupon_points)
+        .map(async (business) => {
+          const { data: coupons, error: couponsError } = (await supabase
+            .from('coupons')
+            .select(
+              `
+              id,
+              name,
+              description,
+              points_required,
+              is_active,
+              coupon_specific_points!inner(points, last_updated)
+            `
+            )
+            .eq('business_id', business.id)
+            .eq('is_active', true)
+            .eq('coupon_specific_points.user_id', authUser.id)) as {
+            data: Coupon[] | null;
+            error: any;
+          };
+
+          if (couponsError) {
+            console.error('Error fetching coupons:', couponsError);
+            return {
+              businessId: business.id,
+              businessName: business.name,
+              coupons: [],
+            };
+          }
+
+          return {
+            businessId: business.id,
+            businessName: business.name,
+            coupons: (coupons || []).map((coupon) => ({
+              id: coupon.id,
+              name: coupon.name,
+              description: coupon.description,
+              points_required: coupon.points_required,
+              current_points: coupon.coupon_specific_points[0]?.points || 0,
+              last_updated: coupon.coupon_specific_points[0]?.last_updated,
+            })),
+          };
+        })
+    );
+
+    return sendSuccessResponse(
+      c,
+      {
+        businesses: Array.from(businessMap.values()),
+        businessCoupons: businessesWithCoupons,
+      },
+      'User loyalty summary retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Error getting user loyalty summary:', error);
+    return sendErrorResponse(c, 'Failed to get user loyalty summary', 500);
   }
 };

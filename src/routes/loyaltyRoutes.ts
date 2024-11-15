@@ -28,4 +28,9 @@ loyaltyRouter.get(
 
 loyaltyRouter.get('/redeemed-coupon', couponController.getRedeemedCoupon);
 
+loyaltyRouter.get(
+  '/user-loyalty-summary',
+  loyaltyController.getUserLoyaltySummary
+);
+
 export default loyaltyRouter;
