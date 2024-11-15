@@ -201,3 +201,90 @@ export const getUserActionHistory = async (c: Context) => {
     return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };
+
+export const deleteUserAccount = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+
+    if (!authUser || !authUser.id) {
+      throw new CustomError('Not authenticated', 401);
+    }
+
+    const userId = authUser.id;
+
+    // Delete loyalty points
+    const { error: loyaltyPointsError } = await supabase
+      .from('loyalty_points')
+      .delete()
+      .eq('user_id', userId);
+
+    if (loyaltyPointsError) {
+      console.error('Error deleting loyalty points:', loyaltyPointsError);
+      throw new CustomError('Failed to delete loyalty points', 500);
+    }
+
+    // Delete coupon specific points
+    const { error: couponPointsError } = await supabase
+      .from('coupon_specific_points')
+      .delete()
+      .eq('user_id', userId);
+
+    if (couponPointsError) {
+      console.error('Error deleting coupon points:', couponPointsError);
+      throw new CustomError('Failed to delete coupon points', 500);
+    }
+
+    // Delete redeemed coupons
+    const { error: redeemedCouponsError } = await supabase
+      .from('redeemed_coupons')
+      .delete()
+      .eq('user_id', userId);
+
+    if (redeemedCouponsError) {
+      console.error('Error deleting redeemed coupons:', redeemedCouponsError);
+      throw new CustomError('Failed to delete redeemed coupons', 500);
+    }
+
+    // Delete user loyalty points
+    const { error: userLoyaltyPointsError } = await supabase
+      .from('user_loyalty_points')
+      .delete()
+      .eq('user_id', userId);
+
+    if (userLoyaltyPointsError) {
+      console.error(
+        'Error deleting user loyalty points:',
+        userLoyaltyPointsError
+      );
+      throw new CustomError('Failed to delete user loyalty points', 500);
+    }
+
+    // Delete QR codes
+    const { error: qrCodesError } = await supabase
+      .from('qr_codes')
+      .delete()
+      .eq('user_id', userId);
+
+    if (qrCodesError) {
+      console.error('Error deleting QR codes:', qrCodesError);
+      throw new CustomError('Failed to delete QR codes', 500);
+    }
+
+    // Finally, delete the user from auth.users
+    const { error: authDeleteError } =
+      await supabase.auth.admin.deleteUser(userId);
+
+    if (authDeleteError) {
+      console.error('Error deleting auth user:', authDeleteError);
+      throw new CustomError('Failed to delete user account', 500);
+    }
+
+    return sendSuccessResponse(c, null, 'User account deleted successfully');
+  } catch (error) {
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
+};
