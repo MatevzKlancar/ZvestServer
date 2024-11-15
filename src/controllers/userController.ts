@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import { supabase } from '../config/supabase';
 import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
+import { supabaseAdmin } from '../config/supabaseAdmin';
 
 interface Business {
   name: string;
@@ -280,6 +281,65 @@ export const deleteUserAccount = async (c: Context) => {
     }
 
     return sendSuccessResponse(c, null, 'User account deleted successfully');
+  } catch (error) {
+    if (error instanceof CustomError) {
+      return sendErrorResponse(c, error.message, error.statusCode);
+    }
+    console.error('Unexpected error:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
+  }
+};
+
+export const updateUserProfile = async (c: Context) => {
+  try {
+    const authUser = c.get('user');
+    const { name, date_of_birth } = await c.req.json();
+
+    if (!authUser || !authUser.id) {
+      throw new CustomError('Not authenticated', 401);
+    }
+
+    // Validate inputs
+    if (name && typeof name !== 'string') {
+      throw new CustomError('Name must be a string', 400);
+    }
+
+    if (date_of_birth) {
+      const dateRegex = /^\d{2}-\d{2}-\d{4}$/;
+      if (!dateRegex.test(date_of_birth)) {
+        throw new CustomError('Invalid date format. Use DD-MM-YYYY', 400);
+      }
+    }
+
+    // Get current user metadata
+    const { data: userData, error: userError } =
+      await supabaseAdmin.auth.admin.getUserById(authUser.id);
+
+    if (userError || !userData?.user) {
+      throw new CustomError('Error fetching user data', 500);
+    }
+
+    const currentMetadata = userData.user.user_metadata || {};
+
+    // Update user metadata
+    const { error: updateError } =
+      await supabaseAdmin.auth.admin.updateUserById(authUser.id, {
+        user_metadata: {
+          ...currentMetadata,
+          ...(name && { name }),
+          ...(date_of_birth && { date_of_birth }),
+        },
+      });
+
+    if (updateError) {
+      throw new CustomError('Error updating user profile', 500);
+    }
+
+    return sendSuccessResponse(
+      c,
+      { name, date_of_birth },
+      'Profile updated successfully'
+    );
   } catch (error) {
     if (error instanceof CustomError) {
       return sendErrorResponse(c, error.message, error.statusCode);

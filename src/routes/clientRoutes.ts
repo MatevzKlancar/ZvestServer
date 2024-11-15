@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/authMiddleware';
 import {
   deleteUserAccount,
   getUserActionHistory,
+  updateUserProfile,
 } from '../controllers/userController';
 
 const clientRouter = new Hono();
@@ -17,4 +18,6 @@ clientRouter.route('/loyalty', loyaltyRouter);
 clientRouter.get('/qr-code', getQRCode);
 clientRouter.get('/history', getUserActionHistory);
 clientRouter.delete('/account', deleteUserAccount);
+clientRouter.patch('/profile', updateUserProfile);
+
 export default clientRouter;
