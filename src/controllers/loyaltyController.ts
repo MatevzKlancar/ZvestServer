@@ -8,6 +8,9 @@ interface Business {
   id: string;
   name: string;
   loyalty_type: string;
+  image_url?: string;
+  background_image_url?: string;
+  info_image_urls?: string[];
 }
 
 interface RegularPointsData {
@@ -26,6 +29,8 @@ interface Coupon {
   name: string;
   description: string;
   points_required: number;
+  image_url?: string;
+  sticker_image_url?: string;
   coupon_specific_points: Array<{
     points: number;
     last_updated: string;
@@ -39,6 +44,11 @@ interface BusinessSummary {
   total_points: number;
   has_regular_points: boolean;
   has_coupon_points: boolean;
+  images: {
+    imageUrl?: string;
+    backgroundImageUrl?: string;
+    infoImageUrls?: string[];
+  };
 }
 
 interface BusinessCouponSummary {
@@ -51,6 +61,10 @@ interface BusinessCouponSummary {
     points_required: number;
     current_points: number;
     last_updated: string;
+    images: {
+      imageUrl?: string;
+      stickerImageUrl?: string;
+    };
   }>;
 }
 
@@ -355,7 +369,20 @@ export const getUserLoyaltySummary = async (c: Context) => {
     const { data: regularPointsData, error: regularPointsError } =
       (await supabase
         .from('user_loyalty_points')
-        .select('business_id, total_points, businesses(id, name, loyalty_type)')
+        .select(
+          `
+        business_id,
+        total_points,
+        businesses (
+          id,
+          name,
+          loyalty_type,
+          image_url,
+          background_image_url,
+          info_image_urls
+        )
+      `
+        )
         .eq('user_id', authUser.id)) as {
         data: RegularPointsData[] | null;
         error: any;
@@ -376,7 +403,10 @@ export const getUserLoyaltySummary = async (c: Context) => {
         businesses (
           id,
           name,
-          loyalty_type
+          loyalty_type,
+          image_url,
+          background_image_url,
+          info_image_urls
         )
       `
         )
@@ -390,24 +420,11 @@ export const getUserLoyaltySummary = async (c: Context) => {
       return sendErrorResponse(c, 'Error fetching coupon points', 500);
     }
 
-    // Deduplicate the businesses from coupon points
-    const couponPointsData = Array.from(
-      new Map(
-        (rawCouponPointsData || []).map((item) => [
-          item.business_id,
-          {
-            business_id: item.business_id,
-            businesses: item.businesses,
-          },
-        ])
-      ).values()
-    );
-
     // Combine and deduplicate businesses
     const businessMap = new Map<string, BusinessSummary>();
 
     // Add businesses with regular points
-    (regularPointsData || []).forEach((item) => {
+    regularPointsData?.forEach((item) => {
       businessMap.set(item.business_id, {
         id: item.business_id,
         name: item.businesses.name,
@@ -415,11 +432,16 @@ export const getUserLoyaltySummary = async (c: Context) => {
         total_points: item.total_points,
         has_regular_points: true,
         has_coupon_points: false,
+        images: {
+          imageUrl: item.businesses.image_url,
+          backgroundImageUrl: item.businesses.background_image_url,
+          infoImageUrls: item.businesses.info_image_urls,
+        },
       });
     });
 
     // Add businesses with coupon points
-    couponPointsData.forEach((item) => {
+    rawCouponPointsData?.forEach((item) => {
       if (businessMap.has(item.business_id)) {
         const existing = businessMap.get(item.business_id)!;
         existing.has_coupon_points = true;
@@ -431,6 +453,11 @@ export const getUserLoyaltySummary = async (c: Context) => {
           total_points: 0,
           has_regular_points: false,
           has_coupon_points: true,
+          images: {
+            imageUrl: item.businesses.image_url,
+            backgroundImageUrl: item.businesses.background_image_url,
+            infoImageUrls: item.businesses.info_image_urls,
+          },
         });
       }
     });
@@ -448,6 +475,8 @@ export const getUserLoyaltySummary = async (c: Context) => {
               name,
               description,
               points_required,
+              image_url,
+              sticker_image_url,
               is_active,
               coupon_specific_points!inner(points, last_updated)
             `
@@ -471,14 +500,19 @@ export const getUserLoyaltySummary = async (c: Context) => {
           return {
             businessId: business.id,
             businessName: business.name,
-            coupons: (coupons || []).map((coupon) => ({
-              id: coupon.id,
-              name: coupon.name,
-              description: coupon.description,
-              points_required: coupon.points_required,
-              current_points: coupon.coupon_specific_points[0]?.points || 0,
-              last_updated: coupon.coupon_specific_points[0]?.last_updated,
-            })),
+            coupons:
+              coupons?.map((coupon) => ({
+                id: coupon.id,
+                name: coupon.name,
+                description: coupon.description,
+                points_required: coupon.points_required,
+                current_points: coupon.coupon_specific_points[0]?.points || 0,
+                last_updated: coupon.coupon_specific_points[0]?.last_updated,
+                images: {
+                  imageUrl: coupon.image_url,
+                  stickerImageUrl: coupon.sticker_image_url,
+                },
+              })) || [],
           };
         })
     );
