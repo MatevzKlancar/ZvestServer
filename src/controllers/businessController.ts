@@ -556,7 +556,10 @@ export const getPublicBusinessData = async (c: Context) => {
   try {
     const businessId = c.req.param('businessId');
 
-    let query = supabaseAdmin.from('businesses').select(`
+    let query = supabaseAdmin
+      .from('businesses')
+      .select(
+        `
         id,
         name,
         created_at,
@@ -572,7 +575,9 @@ export const getPublicBusinessData = async (c: Context) => {
         image_url,
         background_image_url,
         info_image_urls
-      `);
+      `
+      )
+      .eq('verified', true);
 
     if (businessId) {
       query = query.eq('id', businessId);
