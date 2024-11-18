@@ -590,7 +590,7 @@ export const getRedeemedCoupon = async (c: Context) => {
           image_url,
           sticker_image_url
         ),
-        businesses (
+        businesses!redeemed_coupons_business_id_fkey (
           name,
           image_url,
           description
@@ -633,10 +633,12 @@ export const getRedeemedCoupon = async (c: Context) => {
       rawRedeemedCoupon;
 
     if (!businesses || !Array.isArray(businesses) || businesses.length === 0) {
+      console.error('Raw redeemed coupon data:', rawRedeemedCoupon);
       throw new Error('Business data not found');
     }
 
-    const businessData = businesses[0]; // Get the first (and should be only) business
+    const businessData = businesses[0]; // Get the first business from the array
+
     const redeemedCoupon = {
       ...redeemedCouponWithoutBusinesses,
       business: {
