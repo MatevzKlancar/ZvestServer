@@ -573,11 +573,17 @@ export const getRedeemedCoupon = async (c: Context) => {
     }
 
     // Get the user's most recent unverified redeemed coupon
-    const { data: redeemedCoupon, error: fetchError } = await supabase
+    const { data: rawRedeemedCoupon, error: fetchError } = await supabase
       .from('redeemed_coupons')
       .select(
         `
-        *,
+        id,
+        user_id,
+        coupon_id,
+        business_id,
+        redeemed_at,
+        verified,
+        verified_at,
         coupons (
           name,
           points_required,
@@ -597,7 +603,7 @@ export const getRedeemedCoupon = async (c: Context) => {
       .limit(1)
       .single();
 
-    if (fetchError || !redeemedCoupon) {
+    if (fetchError || !rawRedeemedCoupon) {
       return c.json(
         {
           message: 'No active redeemed coupon found',
@@ -608,7 +614,7 @@ export const getRedeemedCoupon = async (c: Context) => {
     }
 
     // Check if the coupon is still valid (within 5 minutes)
-    const redeemedAt = new Date(redeemedCoupon.redeemed_at);
+    const redeemedAt = new Date(rawRedeemedCoupon.redeemed_at);
     const now = new Date();
     const diffInMinutes = (now.getTime() - redeemedAt.getTime()) / (1000 * 60);
 
@@ -622,16 +628,27 @@ export const getRedeemedCoupon = async (c: Context) => {
       );
     }
 
+    // Format the response without the redundant businesses data
+    const { businesses, ...redeemedCouponWithoutBusinesses } =
+      rawRedeemedCoupon;
+
+    if (!businesses || !Array.isArray(businesses) || businesses.length === 0) {
+      throw new Error('Business data not found');
+    }
+
+    const businessData = businesses[0]; // Get the first (and should be only) business
+    const redeemedCoupon = {
+      ...redeemedCouponWithoutBusinesses,
+      business: {
+        name: businessData.name,
+        logo: businessData.image_url,
+        description: businessData.description,
+      },
+    };
+
     return c.json({
       message: 'Redeemed coupon retrieved successfully',
-      redeemedCoupon: {
-        ...redeemedCoupon,
-        business: {
-          name: redeemedCoupon.businesses.name,
-          logo: redeemedCoupon.businesses.image_url,
-          description: redeemedCoupon.businesses.description,
-        },
-      },
+      redeemedCoupon,
     });
   } catch (error) {
     console.error('Error getting redeemed coupon:', error);
