@@ -102,6 +102,7 @@ export const createBusiness = async (c: Context) => {
         image_url: imageUrl,
         background_image_url: backgroundImageUrl,
         info_image_urls: infoImageUrls,
+        short_info: businessData.shortInfo,
       })
       .select()
       .single();
@@ -201,6 +202,8 @@ export const updateBusiness = async (c: Context) => {
       updateData.website = businessData.website;
     if (businessData.loyaltyType !== undefined)
       updateData.loyalty_type = businessData.loyaltyType;
+    if (businessData.shortInfo !== undefined)
+      updateData.short_info = businessData.shortInfo;
 
     // Handle image uploads
     if (image) {
@@ -568,6 +571,7 @@ export const getPublicBusinessData = async (c: Context) => {
         phone_number,
         location,
         description,
+        short_info,
         company_name,
         registration_place,
         registry_number,
