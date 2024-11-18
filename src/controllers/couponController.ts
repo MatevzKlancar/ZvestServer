@@ -573,27 +573,16 @@ export const getRedeemedCoupon = async (c: Context) => {
     }
 
     // Get the user's most recent unverified redeemed coupon
-    const { data: rawRedeemedCoupon, error: fetchError } = await supabase
+    const { data: redeemedCoupon, error: fetchError } = await supabase
       .from('redeemed_coupons')
       .select(
         `
-        id,
-        user_id,
-        coupon_id,
-        business_id,
-        redeemed_at,
-        verified,
-        verified_at,
+        *,
         coupons (
           name,
           points_required,
           image_url,
           sticker_image_url
-        ),
-        businesses!redeemed_coupons_business_id_fkey (
-          name,
-          image_url,
-          description
         )
       `
       )
@@ -603,7 +592,7 @@ export const getRedeemedCoupon = async (c: Context) => {
       .limit(1)
       .single();
 
-    if (fetchError || !rawRedeemedCoupon) {
+    if (fetchError || !redeemedCoupon) {
       return c.json(
         {
           message: 'No active redeemed coupon found',
@@ -614,7 +603,7 @@ export const getRedeemedCoupon = async (c: Context) => {
     }
 
     // Check if the coupon is still valid (within 5 minutes)
-    const redeemedAt = new Date(rawRedeemedCoupon.redeemed_at);
+    const redeemedAt = new Date(redeemedCoupon.redeemed_at);
     const now = new Date();
     const diffInMinutes = (now.getTime() - redeemedAt.getTime()) / (1000 * 60);
 
@@ -627,26 +616,6 @@ export const getRedeemedCoupon = async (c: Context) => {
         200
       );
     }
-
-    // Format the response without the redundant businesses data
-    const { businesses, ...redeemedCouponWithoutBusinesses } =
-      rawRedeemedCoupon;
-
-    if (!businesses || !Array.isArray(businesses) || businesses.length === 0) {
-      console.error('Raw redeemed coupon data:', rawRedeemedCoupon);
-      throw new Error('Business data not found');
-    }
-
-    const businessData = businesses[0]; // Get the first business from the array
-
-    const redeemedCoupon = {
-      ...redeemedCouponWithoutBusinesses,
-      business: {
-        name: businessData.name,
-        logo: businessData.image_url,
-        description: businessData.description,
-      },
-    };
 
     return c.json({
       message: 'Redeemed coupon retrieved successfully',
