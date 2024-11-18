@@ -214,7 +214,7 @@ export const deleteUserAccount = async (c: Context) => {
     const userId = authUser.id;
 
     // Delete loyalty points
-    const { error: loyaltyPointsError } = await supabase
+    const { error: loyaltyPointsError } = await supabaseAdmin
       .from('loyalty_points')
       .delete()
       .eq('user_id', userId);
@@ -225,7 +225,7 @@ export const deleteUserAccount = async (c: Context) => {
     }
 
     // Delete coupon specific points
-    const { error: couponPointsError } = await supabase
+    const { error: couponPointsError } = await supabaseAdmin
       .from('coupon_specific_points')
       .delete()
       .eq('user_id', userId);
@@ -236,7 +236,7 @@ export const deleteUserAccount = async (c: Context) => {
     }
 
     // Delete redeemed coupons
-    const { error: redeemedCouponsError } = await supabase
+    const { error: redeemedCouponsError } = await supabaseAdmin
       .from('redeemed_coupons')
       .delete()
       .eq('user_id', userId);
@@ -247,7 +247,7 @@ export const deleteUserAccount = async (c: Context) => {
     }
 
     // Delete user loyalty points
-    const { error: userLoyaltyPointsError } = await supabase
+    const { error: userLoyaltyPointsError } = await supabaseAdmin
       .from('user_loyalty_points')
       .delete()
       .eq('user_id', userId);
@@ -261,7 +261,7 @@ export const deleteUserAccount = async (c: Context) => {
     }
 
     // Delete QR codes
-    const { error: qrCodesError } = await supabase
+    const { error: qrCodesError } = await supabaseAdmin
       .from('qr_codes')
       .delete()
       .eq('user_id', userId);
@@ -273,7 +273,7 @@ export const deleteUserAccount = async (c: Context) => {
 
     // Finally, delete the user from auth.users
     const { error: authDeleteError } =
-      await supabase.auth.admin.deleteUser(userId);
+      await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (authDeleteError) {
       console.error('Error deleting auth user:', authDeleteError);
