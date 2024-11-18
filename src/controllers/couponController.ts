@@ -583,6 +583,11 @@ export const getRedeemedCoupon = async (c: Context) => {
           points_required,
           image_url,
           sticker_image_url
+        ),
+        businesses (
+          name,
+          image_url,
+          description
         )
       `
       )
@@ -619,7 +624,14 @@ export const getRedeemedCoupon = async (c: Context) => {
 
     return c.json({
       message: 'Redeemed coupon retrieved successfully',
-      redeemedCoupon,
+      redeemedCoupon: {
+        ...redeemedCoupon,
+        business: {
+          name: redeemedCoupon.businesses.name,
+          logo: redeemedCoupon.businesses.image_url,
+          description: redeemedCoupon.businesses.description,
+        },
+      },
     });
   } catch (error) {
     console.error('Error getting redeemed coupon:', error);
