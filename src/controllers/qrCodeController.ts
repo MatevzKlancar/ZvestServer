@@ -299,6 +299,43 @@ export const handleQRCode = async (c: Context) => {
           }
         }
 
+        // Log the points transaction in loyalty_points table
+        const { error: loyaltyLogError } = await supabase
+          .from('loyalty_points')
+          .insert({
+            user_id: qrCode.user_id,
+            business_id: staffBusinessId,
+            points: amount,
+            awarded_by: staffUser.id,
+            awarded_at: new Date().toISOString(),
+          });
+
+        if (loyaltyLogError) {
+          console.error('Error logging loyalty points:', loyaltyLogError);
+          throw new CustomError(
+            'Error logging loyalty points transaction',
+            500
+          );
+        }
+
+        // Log the staff action
+        const { error: staffActionError } = await supabase
+          .from('staff_actions')
+          .insert({
+            staff_user_id: staffUser.id,
+            action_type: 'AWARD_POINTS',
+            action_details: {
+              points_awarded: amount,
+              recipient_user_id: qrCode.user_id,
+            },
+            business_id: staffBusinessId,
+          });
+
+        if (staffActionError) {
+          console.error('Error logging staff action:', staffActionError);
+          throw new CustomError('Error logging staff action', 500);
+        }
+
         // Mark QR code as used
         const { error: markUsedError } = await supabase
           .from('qr_codes')
