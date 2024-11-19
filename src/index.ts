@@ -23,6 +23,8 @@ app.use(
       'http://localhost:5174',
       'https://zvestbusiness.netlify.app',
       'https://zvest.netlify.app',
+      'https://zvest-dusky.pages.dev',
+      'https://aplikacija.zvest.si',
     ],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowHeaders: ['Content-Type', 'Authorization'],
