@@ -405,9 +405,14 @@ export const getOwnerCoupons = async (c: Context) => {
 
     const ownerUser = userData.user;
 
-    if (ownerUser.user_metadata?.role !== 'Owner') {
+    if (
+      ownerUser.user_metadata?.role !== 'Owner' &&
+      ownerUser.user_metadata?.role !== 'Staff'
+    ) {
       return c.json(
-        { error: 'Access denied. Only owners can view their coupons.' },
+        {
+          error: 'Access denied. Only owners and staff can view their coupons.',
+        },
         403
       );
     }
