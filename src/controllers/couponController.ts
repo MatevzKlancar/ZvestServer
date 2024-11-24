@@ -199,11 +199,14 @@ export const redeemCoupon = async (c: Context) => {
         );
       }
 
-      // Deduct points immediately upon redemption
+      // Calculate remaining points after redemption
+      const remainingPoints = currentPoints - coupon.points_required;
+
+      // Update points with remaining amount instead of resetting to 0
       const { error: updatePointsError } = await supabase
         .from('coupon_specific_points')
         .update({
-          points: 0, // Reset points after redemption
+          points: remainingPoints,
           last_updated: new Date().toISOString(),
         })
         .eq('user_id', userId)
