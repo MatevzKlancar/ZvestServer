@@ -27,6 +27,8 @@ app.use(
       'https://business.zvest.si',
       'https://admin.zvest.si',
       'https://app.zvest.si',
+      'https://duskydev.zvest.si',
+      'https://nautilusdev.zvest.si',
     ],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowHeaders: ['Content-Type', 'Authorization'],
