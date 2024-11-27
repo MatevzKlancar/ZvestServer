@@ -187,6 +187,8 @@ export const handleQRCode = async (c: Context) => {
           .update({
             points: newPoints,
             last_updated: new Date().toISOString(),
+            operation_type_add: 1,
+            last_action_points: amount
           })
           .eq('user_id', qrCode.user_id)
           .eq('business_id', staffBusinessId)
@@ -205,6 +207,8 @@ export const handleQRCode = async (c: Context) => {
             coupon_id: couponId,
             points: newPoints,
             last_updated: new Date().toISOString(),
+            operation_type_add: 1,
+            last_action_points: amount
           });
 
         if (insertError) {
