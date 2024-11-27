@@ -278,6 +278,8 @@ export const handleQRCode = async (c: Context) => {
             .update({
               total_points: newPoints,
               last_updated: new Date().toISOString(),
+              operation_type_add: 1,  // 1 for adding points
+              last_action_points: amount
             })
             .eq('user_id', qrCode.user_id)
             .eq('business_id', staffBusinessId);
@@ -295,6 +297,8 @@ export const handleQRCode = async (c: Context) => {
               business_id: staffBusinessId,
               total_points: newPoints,
               last_updated: new Date().toISOString(),
+              operation_type_add: 1,  // 1 for adding points
+              last_action_points: amount
             });
 
           if (insertError) {
@@ -312,6 +316,7 @@ export const handleQRCode = async (c: Context) => {
             points: amount,
             awarded_by: staffUser.id,
             awarded_at: new Date().toISOString(),
+            operation_type_add: 1,
           });
 
         if (loyaltyLogError) {

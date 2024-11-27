@@ -208,6 +208,8 @@ export const redeemCoupon = async (c: Context) => {
         .update({
           points: remainingPoints,
           last_updated: new Date().toISOString(),
+          operation_type_add: 0,  // 0 for point reduction
+          last_action_points: coupon.points_required  // Amount of points being deducted
         })
         .eq('user_id', userId)
         .eq('business_id', coupon.business_id)
@@ -242,7 +244,7 @@ export const redeemCoupon = async (c: Context) => {
       // Deduct points
       const { error: updateError } = await supabase
         .from('user_loyalty_points')
-        .update({ total_points: currentPoints - coupon.points_required })
+        .update({ total_points: currentPoints - coupon.points_required,  operation_type_add: 0, last_action_points: coupon.points_required }) 
         .eq('user_id', userId)
         .eq('business_id', coupon.business_id);
 
