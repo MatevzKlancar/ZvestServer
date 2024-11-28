@@ -316,7 +316,6 @@ export const handleQRCode = async (c: Context) => {
             points: amount,
             awarded_by: staffUser.id,
             awarded_at: new Date().toISOString(),
-            operation_type_add: 1,
           });
 
         if (loyaltyLogError) {
