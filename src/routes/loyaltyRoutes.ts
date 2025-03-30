@@ -11,6 +11,12 @@ loyaltyRouter.get('/points', loyaltyController.getLoyaltyPointsInfo);
 loyaltyRouter.post('/coupons', couponController.createCoupon);
 loyaltyRouter.post('/coupons/redeem', couponController.redeemCoupon);
 
+// New endpoint for customers to claim points by scanning bill QR codes
+loyaltyRouter.post(
+  '/claim-points',
+  loyaltyController.claimLoyaltyPointsFromBill
+);
+
 loyaltyRouter.get('/coupons/owner', couponController.getOwnerCoupons);
 loyaltyRouter.delete('/coupons/owner/:couponId', couponController.deleteCoupon);
 

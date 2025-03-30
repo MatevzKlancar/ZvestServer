@@ -204,6 +204,8 @@ export const updateBusiness = async (c: Context) => {
       updateData.loyalty_type = businessData.loyaltyType;
     if (businessData.shortInfo !== undefined)
       updateData.short_info = businessData.shortInfo;
+    if (businessData.taxNumber !== undefined)
+      updateData.tax_number = businessData.taxNumber;
 
     // Handle image uploads
     if (image) {
