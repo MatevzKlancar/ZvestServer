@@ -124,6 +124,54 @@ export const createBusiness = async (c: Context) => {
       throw new CustomError('Error updating owner information', 500);
     }
 
+    // Create or update default employee account
+    const employeeEmail = `zaposleni@${businessData.name.toLowerCase().replace(/\s+/g, '')}.si`;
+    
+    // First check if the user already exists
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const existingEmployee = existingUsers?.users.find(user => user.email === employeeEmail);
+
+    let employeeData;
+    let employeeError;
+
+    if (existingEmployee) {
+      // Update existing employee's password
+      ({ data: employeeData, error: employeeError } = await supabaseAdmin
+        .auth.admin.updateUserById(existingEmployee.id, {
+          password: businessData.employeePassword,
+          user_metadata: {
+            role: 'Staff',
+            business_id: business.id,
+            name: 'Default Employee',
+            business_name: businessData.name
+          }
+        }));
+    } else {
+      // Create new employee account
+      ({ data: employeeData, error: employeeError } = await supabaseAdmin
+        .auth.admin.createUser({
+          email: employeeEmail,
+          password: businessData.employeePassword,
+          email_confirm: true,
+          user_metadata: {
+            role: 'Staff',
+            business_id: business.id,
+            name: 'Default Employee',
+            business_name: businessData.name
+          }
+        }));
+    }
+
+    if (employeeError) {
+      // If employee creation/update fails, we should delete the business
+      await supabaseAdmin
+        .from('businesses')
+        .delete()
+        .eq('id', business.id);
+      
+      throw new CustomError('Error managing employee account', 500);
+    }
+
     return sendSuccessResponse(
       c,
       { business },
