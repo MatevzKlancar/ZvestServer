@@ -7,6 +7,7 @@ import { handleQRCode } from '../controllers/qrCodeController';
 import { authMiddleware } from '../middleware/authMiddleware';
 import invitationRouter from './invitationRouter';
 import { verifyCoupon } from '../controllers/couponController';
+import employeeRouter from './employeeRoutes';
 
 const dashboardRouter = new Hono();
 
@@ -25,5 +26,6 @@ dashboardRouter.route('/menu', menuRouter);
 dashboardRouter.post('/scan', handleQRCode);
 dashboardRouter.route('/invitations', invitationRouter);
 dashboardRouter.post('/verify-coupon', verifyCoupon);
+dashboardRouter.route('/employees', employeeRouter);
 
 export default dashboardRouter;
