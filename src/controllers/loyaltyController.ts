@@ -4,6 +4,33 @@ import CustomError from '../utils/customError';
 import { sendSuccessResponse, sendErrorResponse } from '../utils/apiResponse';
 import { supabaseAdmin } from '../config/supabaseAdmin';
 
+// Government invoice API interfaces
+interface InvoiceIdentifier {
+  BusinessPremiseID: string;
+  ElectronicDeviceID: string;
+  InvoiceNumber: string;
+}
+
+interface InvoiceData {
+  TaxNumber: number;
+  UniqueInvoiceID: string;
+  ProtectedID: string;
+  IssueDateTime: string;
+  IssuerName: string;
+  IssuerAddress: string;
+  InvoiceAmount: number;
+  PaymentAmount: number;
+  InvoiceIdentifier: InvoiceIdentifier;
+}
+
+interface InvoiceResponse {
+  Data: InvoiceData;
+  status: {
+    code: string;
+    msg: string;
+  };
+}
+
 interface Business {
   id: string;
   name: string;
@@ -67,6 +94,115 @@ interface BusinessCouponSummary {
     };
   }>;
 }
+
+/**
+ * Verifies an invoice with the government API using either a ZOI or QR code
+ * @param apiKey API key for the government service
+ * @param zoi ZOI (Protected ID) of the invoice
+ * @param qr QR code data from the invoice
+ * @returns Invoice data if verified, null if not found or invalid
+ */
+const verifyInvoiceWithGovernmentAPI = async (
+  apiKey: string,
+  zoi?: string,
+  qr?: string
+): Promise<InvoiceData | null> => {
+  try {
+    console.log('🔄 Starting government API verification process');
+
+    // Production URL for the government API
+    const baseUrl = 'https://blagajne.fu.gov.si:9007/v1/getInvoice';
+    console.log('🌐 API endpoint:', baseUrl);
+
+    // Build query string based on what's provided (either ZOI or QR)
+    let queryParams = `apikey=${encodeURIComponent(apiKey)}`;
+    if (zoi) {
+      queryParams += `&zoi=${encodeURIComponent(zoi)}`;
+      console.log(
+        '🔑 Using ZOI for verification:',
+        zoi.substring(0, 10) + '...'
+      );
+    } else if (qr) {
+      queryParams += `&qr=${encodeURIComponent(qr)}`;
+      console.log('🔑 Using QR code for verification (length):', qr.length);
+    } else {
+      console.error(
+        '❌ Missing parameters: Either ZOI or QR code must be provided'
+      );
+      throw new Error('Either ZOI or QR code must be provided');
+    }
+
+    const url = `${baseUrl}?${queryParams}`;
+    console.log('🔗 API request URL (masked):', url.replace(apiKey, '****'));
+
+    console.log('📤 Sending request to government API...');
+
+    // Temporarily disable SSL certificate verification
+    // ⚠️ Note: This is not recommended for production, but needed for the government API
+    console.log('⚠️ Temporarily disabling SSL verification for government API');
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      console.log(
+        '📥 Received response from government API, status:',
+        response.status
+      );
+
+      if (!response.ok) {
+        console.error(
+          '❌ HTTP error from government API:',
+          response.status,
+          response.statusText
+        );
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const data: InvoiceResponse = await response.json();
+      console.log(
+        '📋 Government API response status:',
+        data.status.code,
+        data.status.msg
+      );
+
+      // Check the status code from the response
+      if (data.status.code === '1') {
+        // Invoice found
+        console.log('✅ Invoice found in government database');
+        console.log('📄 Invoice basic info:', {
+          TaxNumber: data.Data.TaxNumber,
+          InvoiceAmount: data.Data.InvoiceAmount,
+          IssueDateTime: data.Data.IssueDateTime,
+        });
+        return data.Data;
+      } else {
+        // Invoice not found or other error
+        console.error(
+          '❌ Invoice verification failed. Status:',
+          data.status.code,
+          'Message:',
+          data.status.msg
+        );
+        return null;
+      }
+    } finally {
+      // Re-enable SSL certificate verification
+      console.log('🔒 Re-enabling SSL verification');
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+    }
+  } catch (error) {
+    console.error('❌ Error during government API verification:', error);
+    // Make sure to re-enable SSL verification even if there's an error
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+    return null;
+  }
+};
 
 export const awardLoyaltyPoints = async (c: Context) => {
   const authUser = c.get('user');
@@ -528,5 +664,212 @@ export const getUserLoyaltySummary = async (c: Context) => {
   } catch (error) {
     console.error('Error getting user loyalty summary:', error);
     return sendErrorResponse(c, 'Failed to get user loyalty summary', 500);
+  }
+};
+
+export const claimLoyaltyPointsFromBill = async (c: Context) => {
+  try {
+    console.log('👉 Claim loyalty points process started');
+    const authUser = c.get('user');
+    const { qrCode } = await c.req.json();
+    console.log('📝 Request data:', {
+      userID: authUser?.id,
+      qrCodeLength: qrCode?.length,
+    });
+
+    if (!authUser || !authUser.id) {
+      console.log('❌ Authentication failed: No valid user found');
+      return sendErrorResponse(c, 'Not authenticated', 401);
+    }
+
+    const userId = authUser.id;
+    console.log('👤 User ID:', userId);
+
+    // Validate input
+    if (!qrCode) {
+      console.log('❌ Validation failed: QR code data missing');
+      return sendErrorResponse(c, 'QR code data is required', 400);
+    }
+
+    console.log(
+      '📱 QR code data received (first 20 chars):',
+      qrCode.substring(0, 20) + '...'
+    );
+
+    // The API key would be stored in an environment variable or config file
+    const API_KEY = process.env.INVOICE_API_KEY;
+    console.log('🔑 API key check:', API_KEY ? 'Available' : 'Missing');
+
+    if (!API_KEY) {
+      console.error('❌ Invoice API key not configured');
+      return sendErrorResponse(c, 'System configuration error', 500);
+    }
+
+    // Verify the invoice with the government API
+    console.log('🔍 Calling government invoice API...');
+    console.log('🔗 Using QR code to verify invoice');
+    const invoiceData = await verifyInvoiceWithGovernmentAPI(
+      API_KEY,
+      undefined,
+      qrCode
+    );
+
+    if (!invoiceData) {
+      console.log(
+        '❌ Invoice verification failed: No data returned from government API'
+      );
+      return sendErrorResponse(
+        c,
+        'Invoice verification failed. Please check the QR code.',
+        400
+      );
+    }
+
+    console.log('✅ Invoice verification successful');
+    console.log('📄 Invoice data:', {
+      TaxNumber: invoiceData.TaxNumber,
+      UniqueInvoiceID: invoiceData.UniqueInvoiceID,
+      IssueDateTime: invoiceData.IssueDateTime,
+      IssuerName: invoiceData.IssuerName,
+      Amount: invoiceData.InvoiceAmount,
+      InvoiceIdentifier: invoiceData.InvoiceIdentifier,
+    });
+
+    // Find business by tax number
+    console.log(
+      '🔍 Looking up business with tax number:',
+      invoiceData.TaxNumber
+    );
+    const { data: business, error: businessError } = await supabase
+      .from('businesses')
+      .select('id, name')
+      .eq('tax_number', invoiceData.TaxNumber.toString())
+      .single();
+
+    if (businessError) {
+      console.error(
+        '❌ Error looking up business by tax number:',
+        businessError
+      );
+      return sendErrorResponse(c, 'Error finding business', 500);
+    }
+
+    if (!business) {
+      console.error(
+        '❌ Business not found for tax number:',
+        invoiceData.TaxNumber
+      );
+      return sendErrorResponse(
+        c,
+        'This business is not registered in our system',
+        404
+      );
+    }
+
+    console.log('✅ Business found:', { id: business.id, name: business.name });
+
+    // Check if this invoice has already been claimed
+    console.log('🔍 Checking if invoice has already been claimed...');
+    const { data: existingClaims, error: claimsError } = await supabase
+      .from('loyalty_points')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('invoice_id', invoiceData.UniqueInvoiceID);
+
+    if (claimsError) {
+      console.error('❌ Error checking for existing claims:', claimsError);
+      return sendErrorResponse(
+        c,
+        'Error checking if invoice was already claimed',
+        500
+      );
+    }
+
+    if (existingClaims && existingClaims.length > 0) {
+      console.log('❌ Invoice already claimed:', existingClaims);
+      return sendErrorResponse(c, 'This invoice has already been claimed', 400);
+    }
+
+    console.log('✅ Invoice has not been claimed yet');
+
+    // Calculate points based on the invoice amount
+    const pointsToAward = Math.floor(invoiceData.InvoiceAmount);
+    console.log(
+      '🎯 Points to award:',
+      pointsToAward,
+      'based on amount:',
+      invoiceData.InvoiceAmount
+    );
+
+    // Award the loyalty points
+    console.log('💰 Awarding loyalty points...');
+    const { data, error } = await supabase.rpc('award_loyalty_points', {
+      p_user_id: userId,
+      p_business_id: business.id,
+      p_points: pointsToAward,
+      p_awarded_by: null, // No staff member involved
+    });
+
+    if (error) {
+      console.error('❌ Error awarding loyalty points:', error);
+      return sendErrorResponse(c, 'Error awarding loyalty points', 500);
+    }
+
+    console.log('✅ Loyalty points awarded successfully:', {
+      awarded: pointsToAward,
+      total_points: data.total_points,
+    });
+
+    // Record the invoice details with the loyalty points
+    console.log('📝 Recording invoice details...');
+    const invoiceDetails = {
+      taxNumber: invoiceData.TaxNumber,
+      protectedId: invoiceData.ProtectedID,
+      issueDateTime: invoiceData.IssueDateTime,
+      issuerName: invoiceData.IssuerName,
+      invoiceAmount: invoiceData.InvoiceAmount,
+      invoiceNumber: `${invoiceData.InvoiceIdentifier.BusinessPremiseID}-${invoiceData.InvoiceIdentifier.ElectronicDeviceID}-${invoiceData.InvoiceIdentifier.InvoiceNumber}`,
+    };
+    console.log('📄 Invoice details:', invoiceDetails);
+
+    const { error: updateError } = await supabase
+      .from('loyalty_points')
+      .update({
+        invoice_id: invoiceData.UniqueInvoiceID,
+        invoice_details: invoiceDetails,
+      })
+      .eq('user_id', userId)
+      .eq('business_id', business.id)
+      .is('invoice_id', null);
+
+    if (updateError) {
+      console.error('⚠️ Warning: Error updating invoice details:', updateError);
+      // We continue anyway since points were already awarded
+    } else {
+      console.log('✅ Invoice details recorded successfully');
+    }
+
+    console.log('🎉 Claim process completed successfully');
+    return sendSuccessResponse(
+      c,
+      {
+        awarded: pointsToAward,
+        total_points: data.total_points,
+        business: {
+          id: business.id,
+          name: business.name,
+        },
+        invoice: {
+          issuer: invoiceData.IssuerName,
+          amount: invoiceData.InvoiceAmount,
+          date: invoiceData.IssueDateTime,
+          invoiceNumber: `${invoiceData.InvoiceIdentifier.BusinessPremiseID}-${invoiceData.InvoiceIdentifier.ElectronicDeviceID}-${invoiceData.InvoiceIdentifier.InvoiceNumber}`,
+        },
+      },
+      'Loyalty points claimed successfully'
+    );
+  } catch (error) {
+    console.error('❌❌❌ Unexpected error claiming loyalty points:', error);
+    return sendErrorResponse(c, 'An unexpected error occurred', 500);
   }
 };

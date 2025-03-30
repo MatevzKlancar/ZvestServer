@@ -7,6 +7,7 @@ import { errorHandler } from './utils/errorHandler';
 import dashboardRouter from './routes/dashboardRoutes';
 import clientRouter from './routes/clientRoutes';
 import authRouter from './routes/authRoutes';
+import loyaltyRouter from './routes/loyaltyRoutes';
 import { getPublicBusinessData } from './controllers/businessController';
 import { getPublicBusinessCoupons } from './controllers/couponController';
 import { getPublicMenu } from './controllers/menuController';
@@ -57,7 +58,7 @@ app.get('/test', (c) => c.text('Hello from Hono!'));
 
 app.route('/dashboard', dashboardRouter);
 app.route('/client', clientRouter);
-
+app.route('/loyalty', loyaltyRouter);
 app.route('/auth', authRouter);
 
 app.get('/public/businesses', getPublicBusinessData);
